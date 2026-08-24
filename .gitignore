@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Multica / Claude runtime (never commit)
+.agent_context/
+.claude/
+.multica/
+
+# Secrets
+*.env
+.env*
+!.env.example
