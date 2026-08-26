@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="面向 Python 初学者的 Transformer 完整架构教程，包含直觉、张量形状、手算、NumPy 实验、测试与验收。">
+<title>Transformer 完整架构：从一句话到下一个 Token</title>
+<style>
+  :root {
+    --paper: #ffffff;
+    --page: #f4f6f3;
+    --ink: #18201e;
+    --muted: #5b6864;
+    --line: #d6ddd9;
+    --deep: #14332d;
+    --green: #167c62;
+    --blue: #176f91;
+    --red: #bd3b5a;
+    --yellow: #f2c14e;
+    --code: #17211f;
+    --code-ink: #e9f1ee;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    letter-spacing: 0;
+  }
+  a { color: var(--blue); }
+  code, pre {
+    font-family: Consolas, "SFMono-Regular", monospace;
+    letter-spacing: 0;
+  }
+  :not(pre) > code {
+    padding: 2px 5px;
+    border: 1px solid #dbe3df;
+    border-radius: 3px;
+    background: #f2f5f3;
+    color: #174d40;
+    font-size: 0.92em;
+  }
+  pre {
+    margin: 16px 0;
+    padding: 16px 18px;
+    overflow-x: auto;
+    border-left: 4px solid var(--green);
+    border-radius: 4px;
+    background: var(--code);
+    color: var(--code-ink);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  pre code { color: inherit; }
+  h1, h2, h3, h4 {
+    line-height: 1.3;
+    letter-spacing: 0;
+  }
+  h1 {
+    max-width: 900px;
+    margin: 0;
+    font-size: 38px;
+    font-weight: 760;
+  }
+  h2 {
+    margin: 0 0 18px;
+    font-size: 27px;
+  }
+  h3 {
+    margin: 30px 0 10px;
+    font-size: 20px;
+  }
+  h4 {
+    margin: 22px 0 8px;
+    font-size: 17px;
+  }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 24px; }
+  li + li { margin-top: 6px; }
+
+  .masthead {
+    min-height: 380px;
+    padding: 56px max(24px, calc((100vw - 1180px) / 2));
+    background: var(--deep);
+    color: #fff;
+  }
+  .masthead .eyebrow {
+    margin: 0 0 14px;
+    color: #aee3d4;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .masthead .lead {
+    max-width: 790px;
+    margin: 20px 0 26px;
+    color: #d9e7e2;
+    font-size: 19px;
+  }
+  .outcome-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 900px;
+    border-top: 1px solid #426059;
+  }
+  .outcome {
+    min-width: 0;
+    padding: 18px 22px 0 0;
+    color: #d9e7e2;
+  }
+  .outcome strong {
+    display: block;
+    margin-bottom: 3px;
+    color: #fff;
+    font-size: 17px;
+  }
+
+  .mobile-toc {
+    display: none;
+    padding: 14px 18px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-toc summary { font-weight: 700; cursor: pointer; }
+  .mobile-toc ol { columns: 2; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 900px);
+    gap: 52px;
+    width: min(1180px, calc(100% - 48px));
+    margin: 0 auto;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    padding: 26px 0;
+    overflow-y: auto;
+  }
+  .sidebar strong {
+    display: block;
+    margin-bottom: 10px;
+    color: var(--deep);
+    font-size: 14px;
+  }
+  .sidebar ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sidebar li { margin: 0; }
+  .sidebar a {
+    display: block;
+    padding: 5px 10px;
+    border-left: 2px solid transparent;
+    color: var(--muted);
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .sidebar a:hover,
+  .sidebar a.active {
+    border-left-color: var(--green);
+    color: var(--deep);
+    font-weight: 700;
+  }
+
+  main {
+    min-width: 0;
+    background: var(--paper);
+  }
+  section {
+    padding: 52px 48px;
+    border-bottom: 1px solid var(--line);
+    scroll-margin-top: 16px;
+  }
+  section:first-child { border-top: 6px solid var(--yellow); }
+  .section-kicker {
+    margin-bottom: 8px;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .section-intro {
+    max-width: 760px;
+    color: var(--muted);
+    font-size: 18px;
+  }
+  .plain,
+  .important,
+  .mistake,
+  .checkpoint {
+    margin: 18px 0;
+    padding: 14px 18px;
+    border-left: 4px solid var(--green);
+    background: #f0f7f4;
+  }
+  .plain strong:first-child,
+  .important strong:first-child,
+  .mistake strong:first-child,
+  .checkpoint strong:first-child {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .important {
+    border-left-color: var(--blue);
+    background: #edf6f9;
+  }
+  .mistake {
+    border-left-color: var(--red);
+    background: #fff1f4;
+  }
+  .checkpoint {
+    border-left-color: var(--yellow);
+    background: #fff9e9;
+  }
+
+  .formula {
+    display: block;
+    margin: 18px 0;
+    padding: 14px;
+    overflow-x: auto;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: #fafcfb;
+    color: #163f35;
+    text-align: center;
+    font-size: 16px;
+  }
+  table {
+    width: 100%;
+    margin: 16px 0;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  th, td {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #edf2ef;
+    color: var(--deep);
+  }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(92px, 1fr));
+    gap: 18px;
+    margin: 24px 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pipeline li {
+    position: relative;
+    min-width: 0;
+    min-height: 94px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--green);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .pipeline li::after {
+    content: ">";
+    position: absolute;
+    top: 31px;
+    right: -15px;
+    color: var(--red);
+    font-weight: 800;
+  }
+  .pipeline li:last-child::after { content: ""; }
+  .pipeline strong { display: block; color: var(--deep); }
+  .pipeline span { display: block; color: var(--muted); font-size: 13px; }
+
+  .shape-flow {
+    margin: 22px 0;
+    padding: 16px 0;
+    overflow-x: auto;
+    color: var(--deep);
+    font-family: Consolas, monospace;
+    font-size: 14px;
+    white-space: pre;
+  }
+  .segments {
+    display: inline-flex;
+    max-width: 100%;
+    margin: 12px 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+  .segments button {
+    min-height: 42px;
+    padding: 8px 14px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    color: var(--deep);
+    font: inherit;
+    cursor: pointer;
+  }
+  .segments button:last-child { border-right: 0; }
+  .segments button[aria-selected="true"] {
+    background: var(--deep);
+    color: #fff;
+  }
+  .mode-output {
+    min-height: 118px;
+    padding: 16px 0;
+  }
+  .mode-output strong { color: var(--deep); }
+
+  .matrix {
+    width: auto;
+    min-width: 430px;
+    font-variant-numeric: tabular-nums;
+  }
+  .matrix th, .matrix td {
+    width: 76px;
+    text-align: center;
+  }
+  .heat-1 { background: #edf7f3; }
+  .heat-2 { background: #c8eadf; }
+  .heat-3 { background: #82cfb8; }
+  .heat-4 { background: #2e9477; color: #fff; }
+  .matrix-wrap { overflow-x: auto; }
+
+  .lab {
+    margin: 28px 0 0;
+    padding: 22px 0 4px 22px;
+    border-left: 4px solid var(--blue);
+  }
+  .lab h3 { margin-top: 0; }
+  .lab-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin: 14px 0;
+  }
+  .lab-meta div {
+    min-width: 0;
+    padding-top: 8px;
+    border-top: 2px solid var(--line);
+  }
+  .lab-meta strong { display: block; color: var(--deep); }
+  details {
+    margin: 14px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: #fafcfb;
+  }
+  summary {
+    padding: 12px 4px;
+    color: var(--deep);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  details > div { padding: 0 14px 14px; }
+  .checklist {
+    padding-left: 0;
+    list-style: none;
+  }
+  .checklist li {
+    padding: 7px 0 7px 28px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .checklist li::before {
+    content: "[ ]";
+    float: left;
+    margin-left: -28px;
+    color: var(--green);
+    font-family: Consolas, monospace;
+    font-weight: 800;
+  }
+  footer {
+    padding: 34px 48px 60px;
+    color: var(--muted);
+    background: var(--paper);
+  }
+
+  @media (max-width: 980px) {
+    .masthead { min-height: 340px; padding: 42px 24px; }
+    h1 { font-size: 32px; }
+    .mobile-toc { display: block; }
+    .layout {
+      display: block;
+      width: min(900px, 100%);
+    }
+    .sidebar { display: none; }
+    .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pipeline li:nth-child(3)::after { content: ""; }
+  }
+  @media (max-width: 640px) {
+    body { font-size: 15px; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 23px; }
+    .masthead .lead { font-size: 17px; }
+    .outcome-row, .lab-meta { grid-template-columns: 1fr; }
+    .outcome { padding-top: 12px; }
+    section { padding: 38px 20px; }
+    footer { padding: 30px 20px 48px; }
+    .mobile-toc ol { columns: 1; }
+    .pipeline { grid-template-columns: 1fr; gap: 10px; }
+    .pipeline li { min-height: auto; }
+    .pipeline li::after,
+    .pipeline li:nth-child(3)::after { content: ""; }
+    .lab { padding-left: 14px; }
+    pre { margin-left: -4px; margin-right: -4px; padding: 14px; font-size: 13px; }
+  }
+  @media print {
+    body { background: #fff; }
+    .masthead { min-height: auto; color: #000; background: #fff; border-bottom: 2px solid #000; }
+    .masthead .lead, .outcome { color: #222; }
+    .masthead strong { color: #000; }
+    .sidebar, .mobile-toc, .segments { display: none; }
+    .layout { display: block; width: 100%; }
+    main { width: 100%; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">阶段 1 · 大模型基础 · 可运行教案</p>
+  <h1>Transformer 完整架构：从一句话到下一个 Token</h1>
+  <p class="lead">不从公式堆砌开始。先跟踪一条数据如何变形，再用手算理解注意力，最后运行 5 个 NumPy 实验和一个完整前向传播。</p>
+  <div class="outcome-row">
+    <div class="outcome"><strong>能解释</strong>用自己的话说清注意力、Mask、残差和 FFN 各自解决什么问题。</div>
+    <div class="outcome"><strong>能追踪</strong>看到任意一步，都能写出张量形状并发现维度错误。</div>
+    <div class="outcome"><strong>能验证</strong>运行代码与测试，不靠“感觉对了”判断是否掌握。</div>
+  </div>
+</header>
+
+<details class="mobile-toc">
+  <summary>章节导航</summary>
+  <ol>
+    <li><a href="#start">0. 先做诊断</a></li>
+    <li><a href="#mental-model">1. 一个心智模型</a></li>
+    <li><a href="#data-flow">2. 跟踪一句话</a></li>
+    <li><a href="#shape">3. 张量形状</a></li>
+    <li><a href="#attention">4. 注意力</a></li>
+    <li><a href="#multihead">5. 多头</a></li>
+    <li><a href="#position">6. 位置信息</a></li>
+    <li><a href="#mask">7. Mask</a></li>
+    <li><a href="#block">8. Transformer Block</a></li>
+    <li><a href="#families">9. 三类架构</a></li>
+    <li><a href="#train-infer">10. 训练与生成</a></li>
+    <li><a href="#labs">11. NumPy 实战</a></li>
+    <li><a href="#debug">12. 调试地图</a></li>
+    <li><a href="#gate">13. 阶段验收</a></li>
+  </ol>
+</details>
+
+<div class="layout">
+  <nav class="sidebar" aria-label="章节导航">
+    <strong>学习路径</strong>
+    <ol>
+      <li><a href="#start">0. 先做诊断</a></li>
+      <li><a href="#mental-model">1. 一个心智模型</a></li>
+      <li><a href="#data-flow">2. 跟踪一句话</a></li>
+      <li><a href="#shape">3. 张量形状</a></li>
+      <li><a href="#attention">4. 注意力</a></li>
+      <li><a href="#multihead">5. 多头</a></li>
+      <li><a href="#position">6. 位置信息</a></li>
+      <li><a href="#mask">7. Mask</a></li>
+      <li><a href="#block">8. Transformer Block</a></li>
+      <li><a href="#families">9. 三类架构</a></li>
+      <li><a href="#train-infer">10. 训练与生成</a></li>
+      <li><a href="#labs">11. NumPy 实战</a></li>
+      <li><a href="#debug">12. 调试地图</a></li>
+      <li><a href="#gate">13. 阶段验收</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="start">
+      <p class="section-kicker">起点</p>
+      <h2>0. 先做 5 分钟诊断</h2>
+      <p class="section-intro">这不是考试。下面任意两题答不上来，就先补对应知识；否则后面最容易卡在“公式看懂了，代码形状对不上”。</p>
+
+      <ol>
+        <li><code>(2, 6, 8)</code> 的 NumPy 数组通常可以表示什么？三个数字各是谁？</li>
+        <li><code>(2, 6, 8) @ (8, 24)</code> 的结果形状是什么？</li>
+        <li>softmax 的输出为什么适合当“权重”？</li>
+        <li>同一句话中，“苹果”为什么不能永远使用一个固定不变的向量？</li>
+        <li>训练时可以同时计算所有位置，为什么生成时仍要一个 token 一个 token 地来？</li>
+      </ol>
+
+      <details>
+        <summary>展开参考答案与补课路由</summary>
+        <div>
+          <ol>
+            <li><code>B=2</code> 个样本，每个样本 <code>T=6</code> 个 token，每个 token 用 <code>D=8</code> 个数表示。</li>
+            <li><code>(2, 6, 24)</code>。矩阵乘法只替换最后一个特征维。</li>
+            <li>每个值非负，且指定轴上的和为 1，所以可作为加权平均的比例。</li>
+            <li>“苹果手机”和“苹果很甜”里的上下文不同，需要上下文化表示。</li>
+            <li>训练时目标序列已知，可以用因果 Mask 并行计算；生成时下一个输入依赖刚生成的 token。</li>
+          </ol>
+          <p>如果第 1、2 题不稳，先读 <code>docs/stages/阶段01_大模型基础/线性代数速成_Transformer预备.md</code> 的“shape、矩阵乘法、广播”三节。</p>
+        </div>
+      </details>
+
+      <div class="checkpoint">
+        <strong>本教案的通过标准</strong>
+        不是“读完”，而是能完成第 13 章的口述、改错、代码和测试四项证据。
+      </div>
+    </section>
+
+    <section id="mental-model">
+      <p class="section-kicker">先抓主干</p>
+      <h2>1. 一个心智模型：先通信，再计算</h2>
+      <p class="section-intro">一个 Transformer block 反复做两件事：Attention 让 token 之间交换信息，FFN 让每个 token 独立加工刚拿到的信息。</p>
+
+      <div class="plain">
+        <strong>一句话定义</strong>
+        Transformer 是一种批量处理 token 的神经网络架构：它用注意力选择上下文，用前馈网络变换特征，再用残差连接把很多层稳定地叠起来。
+      </div>
+
+      <table>
+        <thead><tr><th>组件</th><th>白话问题</th><th>做的事</th><th>不做的事</th></tr></thead>
+        <tbody>
+          <tr><td>Embedding</td><td>这个 token 是谁？</td><td>ID 查表得到向量</td><td>不知道上下文</td></tr>
+          <tr><td>Position</td><td>它排在第几位？</td><td>注入顺序信息</td><td>不判断语义</td></tr>
+          <tr><td>Attention</td><td>此刻该向谁取信息？</td><td>跨 token 加权聚合</td><td>不负责复杂的逐点变换</td></tr>
+          <tr><td>FFN</td><td>拿到信息后怎么算？</td><td>每个位置独立做非线性变换</td><td>不与别的位置通信</td></tr>
+          <tr><td>Residual + Norm</td><td>怎样叠深而不失控？</td><td>保留原信号并稳定数值</td><td>不是语义模块</td></tr>
+        </tbody>
+      </table>
+
+      <div class="important">
+        <strong>先不要把 Q、K、V 当三个神秘新对象</strong>
+        它们通常都来自同一批 token 向量，只是分别乘了不同的可学习矩阵，于是承担“发起查询、被匹配、提供内容”三种角色。
+      </div>
+    </section>
+
+    <section id="data-flow">
+      <p class="section-kicker">全局地图</p>
+      <h2>2. 跟踪“帮我检查这段代码”</h2>
+      <p class="section-intro">先看 decoder-only 模型的一次前向传播。现代文本生成模型大多走这条主线；第 9 章再对比 encoder 和 encoder-decoder。</p>
+
+      <ol class="pipeline" aria-label="从文本到下一个 token 的数据流">
+        <li><strong>文本</strong><span>“帮我检查这段代码”</span></li>
+        <li><strong>Token IDs</strong><span>[41, 92, 307, ...]</span></li>
+        <li><strong>向量 + 位置</strong><span>(B, T, D)</span></li>
+        <li><strong>N 个 Block</strong><span>Attention + FFN</span></li>
+        <li><strong>Logits</strong><span>(B, T, V)</span></li>
+        <li><strong>下一个 Token</strong><span>softmax + 选择</span></li>
+      </ol>
+
+      <h3>逐步发生了什么</h3>
+      <ol>
+        <li><strong>Tokenizer</strong> 把字符串切成 token，并映射为整数 ID。Tokenizer 是规则/算法，不是 Transformer block。</li>
+        <li><strong>Embedding</strong> 用 ID 查表。若词表大小为 <code>V</code>，隐藏维为 <code>D</code>，嵌入表形状是 <code>(V, D)</code>。</li>
+        <li><strong>位置信息</strong> 与 token 表示结合，使“代码检查”和“检查代码”不再只是同一堆向量。</li>
+        <li><strong>N 个 block</strong> 反复建立上下文。越往后，每个 token 的向量越不是“词典释义”，而是当前句子中的语境表示。</li>
+        <li><strong>输出投影</strong> 把每个位置的 <code>D</code> 维表示投影到词表大小 <code>V</code>，得到 logits。</li>
+        <li><strong>解码策略</strong> 把最后一个位置的 logits 变成概率，选择一个新 token，再把它接回输入继续生成。</li>
+      </ol>
+
+      <div class="mistake">
+        <strong>常见混淆</strong>
+        “Transformer 输出一句话”是应用层说法。单次前向传播输出的是各位置对词表的分数；完整句子来自多次前向传播组成的自回归循环。
+      </div>
+    </section>
+
+    <section id="shape">
+      <p class="section-kicker">工程抓手</p>
+      <h2>3. 张量形状比公式更先学</h2>
+      <p class="section-intro">后续统一使用一个不太玩具化的例子：批量 <code>B=2</code>，序列长度 <code>T=6</code>，模型维度 <code>D=8</code>，头数 <code>H=2</code>，每头维度 <code>D_head=4</code>。</p>
+
+      <table>
+        <thead><tr><th>符号</th><th>含义</th><th>本例</th><th>代码中常见形状</th></tr></thead>
+        <tbody>
+          <tr><td><code>B</code></td><td>batch size，一次几条样本</td><td>2</td><td>第 0 维</td></tr>
+          <tr><td><code>T</code></td><td>序列 token 数</td><td>6</td><td>第 1 或倒数第 2 维</td></tr>
+          <tr><td><code>D</code></td><td>每个 token 的隐藏维</td><td>8</td><td>最后一维</td></tr>
+          <tr><td><code>H</code></td><td>注意力头数</td><td>2</td><td>切头后第 1 维</td></tr>
+          <tr><td><code>D_head</code></td><td>每个头的维度</td><td>4</td><td><code>D / H</code></td></tr>
+          <tr><td><code>V</code></td><td>词表大小</td><td>例如 50,000</td><td>logits 最后一维</td></tr>
+        </tbody>
+      </table>
+
+      <div class="shape-flow">X                  (2, 6, 8)
+  ├─ 乘 Wq/Wk/Wv   (8, 8)
+  ▼
+Q, K, V            (2, 6, 8)
+  ├─ reshape + transpose
+  ▼
+Q, K, V 多头       (2, 2, 6, 4)
+  ├─ Q @ K^T
+  ▼
+attention scores   (2, 2, 6, 6)
+  ├─ softmax 后 @ V
+  ▼
+每头输出           (2, 2, 6, 4)
+  ├─ transpose + reshape
+  ▼
+合并输出           (2, 6, 8)</div>
+
+      <div class="checkpoint">
+        <strong>形状自测</strong>
+        若 <code>B=4, T=10, D=512, H=8</code>，请口算 scores 的形状。答案是 <code>(4, 8, 10, 10)</code>，不是 <code>(4, 10, 512)</code>。
+      </div>
+    </section>
+
+    <section id="attention">
+      <p class="section-kicker">核心机制</p>
+      <h2>4. Attention：按当前需要检索上下文</h2>
+      <p class="section-intro">直观上它像一次内存检索：Query 表示“我现在要找什么”，Key 表示“我能被怎样匹配”，Value 表示“匹配上以后我提供什么内容”。</p>
+
+      <code class="formula">Attention(Q, K, V) = softmax((Q @ K^T) / sqrt(D_head) + Mask) @ V</code>
+
+      <h3>4.1 五步拆开</h3>
+      <ol>
+        <li><code>X @ Wq</code> 得到 Query，<code>X @ Wk</code> 得到 Key，<code>X @ Wv</code> 得到 Value。</li>
+        <li><code>Q @ K^T</code> 让每个 Query 与所有 Key 做点积，得到匹配分数。</li>
+        <li>除以 <code>sqrt(D_head)</code>，避免维度大时分数方差过大，softmax 过早接近 0/1。</li>
+        <li>加入 Mask，把不允许看的位置变成极小值。</li>
+        <li>softmax 得到权重，再乘 Value，形成上下文加权和。</li>
+      </ol>
+
+      <h3>4.2 一个可核算的四 token 例子</h3>
+      <p>我们人为设计一个二维查询。它只用于观察计算，不代表模型已经学会语义：</p>
+      <pre><code>tokens = ["写", "代码", "查", "文档"]
+Q = [[1.0, 0.0]]
+K = [[0.2, 0.8],
+     [0.9, 0.1],
+     [0.1, 0.9],
+     [0.8, 0.2]]
+V = [[1.0, 0.0],
+     [0.0, 2.0],
+     [3.0, 0.0],
+     [0.0, 4.0]]</code></pre>
+
+      <table>
+        <thead><tr><th>被关注 token</th><th class="num">Q·K</th><th class="num">除以 sqrt(2)</th><th class="num">softmax 权重</th></tr></thead>
+        <tbody>
+          <tr><td>写</td><td class="num">0.20</td><td class="num">0.141</td><td class="num">0.196</td></tr>
+          <tr><td>代码</td><td class="num">0.90</td><td class="num">0.636</td><td class="num">0.322</td></tr>
+          <tr><td>查</td><td class="num">0.10</td><td class="num">0.071</td><td class="num">0.183</td></tr>
+          <tr><td>文档</td><td class="num">0.80</td><td class="num">0.566</td><td class="num">0.300</td></tr>
+        </tbody>
+      </table>
+      <p>softmax 之后，“代码”和“文档”权重更大。最终输出不是选中某一个 Value，而是四个 Value 的加权和。第 11.1 节会用代码打印精确结果。</p>
+
+      <h3>4.3 注意力矩阵如何读</h3>
+      <p>行是发起查询的 token，列是被读取的 token。选择一行观察权重：</p>
+      <div class="segments" role="tablist" aria-label="选择 Query token">
+        <button type="button" role="tab" data-query="0" aria-selected="true">“我”作为 Query</button>
+        <button type="button" role="tab" data-query="1" aria-selected="false">“查”作为 Query</button>
+        <button type="button" role="tab" data-query="2" aria-selected="false">“代码”作为 Query</button>
+      </div>
+      <div class="matrix-wrap">
+        <table class="matrix" aria-label="注意力权重示意">
+          <thead><tr><th>Query</th><th>我</th><th>查</th><th>代码</th><th>文档</th></tr></thead>
+          <tbody id="attention-row">
+            <tr><th>我</th><td class="heat-4">0.50</td><td class="heat-1">0.10</td><td class="heat-2">0.20</td><td class="heat-2">0.20</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p id="attention-note" class="plain">“我”保留较多自身信息，同时读取任务对象。这里的数字是教学示意，不是从真实模型抽取。</p>
+
+      <div class="mistake">
+        <strong>纠错：单位矩阵经过 softmax 不会变成均匀权重</strong>
+        对一行 <code>[1, 0]</code> 做 softmax，结果约为 <code>[0.731, 0.269]</code>；若先除以 <code>sqrt(2)</code>，约为 <code>[0.670, 0.330]</code>。只有输入分数相同，softmax 才均匀。
+      </div>
+
+      <details>
+        <summary>进一步理解：为什么除以 sqrt(D_head)</summary>
+        <div>
+          <p>若 Q 和 K 的各分量近似独立、均值为 0、方差为 1，点积是 <code>D_head</code> 项乘积之和，方差约随 <code>D_head</code> 增长。除以平方根后，分数尺度重新回到较稳定范围。</p>
+          <p>这不是为了让结果“更小更好”，而是为了避免 softmax 落入过度尖锐、梯度很小的区域。</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="multihead">
+      <p class="section-kicker">并行视角</p>
+      <h2>5. 多头：在多个子空间并行检索</h2>
+      <p class="section-intro">多头不是把同一份注意力复制 H 次，而是把 D 维表示投影、拆成 H 份，每份在自己的 D_head 维空间计算注意力。</p>
+
+      <code class="formula">D_head = D / H　　head_i = Attention(Q_i, K_i, V_i)　　MHA = Concat(head_1 ... head_H) @ Wo</code>
+
+      <p>在本例中，<code>D=8, H=2</code>，所以每头 <code>D_head=4</code>：</p>
+      <pre><code># (B, T, D) -> (B, T, H, D_head) -> (B, H, T, D_head)
+x = x.reshape(batch_size, seq_len, n_heads, d_head)
+x = x.transpose(0, 2, 1, 3)</code></pre>
+
+      <h3>为什么 reshape 后还要 transpose？</h3>
+      <p><code>reshape</code> 只重新解释内存布局，得到 <code>(B, T, H, D_head)</code>；注意力希望每个 batch、每个 head 各自处理完整序列，因此要把 head 移到 token 前面，变为 <code>(B, H, T, D_head)</code>。</p>
+
+      <div class="important">
+        <strong>“不同头一定学语法、指代、位置”只是帮助入门的类比</strong>
+        训练后某些头会呈现可辨认模式，但头的分工不是人为指定，也不保证每个头都有单一、稳定、可解释的职责。
+      </div>
+
+      <div class="checkpoint">
+        <strong>改错题</strong>
+        有人把 <code>(2, 6, 8)</code> 直接 reshape 成 <code>(2, 2, 6, 4)</code>。元素总数虽然相同，但 token 与 head 的元素顺序错了。正确做法是先 <code>(2, 6, 2, 4)</code>，再 transpose。
+      </div>
+    </section>
+
+    <section id="position">
+      <p class="section-kicker">顺序信息</p>
+      <h2>6. 没有位置，注意力只看见“一袋 token”</h2>
+      <p class="section-intro">自注意力本身不会因为 token 出现在第 1 位还是第 5 位而自动改变规则，所以必须注入位置信息。</p>
+
+      <h3>6.1 原论文正弦位置编码</h3>
+      <code class="formula">PE(pos, 2i) = sin(pos / 10000^(2i/D))　　PE(pos, 2i+1) = cos(pos / 10000^(2i/D))</code>
+      <p>每一对偶数/奇数维使用同一个频率，一个取 sin，一个取 cos。位置 0 的偶数维全为 0，奇数维全为 1，这是非常好用的测试性质。</p>
+
+      <pre><code>positions = np.arange(seq_len)[:, None]
+frequencies = np.exp(
+    -np.log(10000.0) * np.arange(0, d_model, 2) / d_model
+)
+angles = positions * frequencies[None, :]
+
+pe = np.zeros((seq_len, d_model))
+pe[:, 0::2] = np.sin(angles)
+pe[:, 1::2] = np.cos(angles)</code></pre>
+
+      <div class="mistake">
+        <strong>高频实现错误</strong>
+        不能让奇数维单独使用新的频率。维度 0/1 是一对，2/3 是一对；每对必须共用同一个 angle，才能满足 <code>sin²(angle) + cos²(angle) = 1</code>。
+      </div>
+
+      <h3>6.2 现代模型常见方式</h3>
+      <table>
+        <thead><tr><th>方式</th><th>核心想法</th><th>需要记住</th></tr></thead>
+        <tbody>
+          <tr><td>固定正弦编码</td><td>把位置向量加到 token embedding</td><td>无可学习参数，适合教学公式</td></tr>
+          <tr><td>可学习绝对位置</td><td>位置也查一张 embedding 表</td><td>简单灵活，长度受训练表限制</td></tr>
+          <tr><td>RoPE</td><td>按位置旋转 Q/K，使点积带上相对位置信息</td><td>现代 decoder-only 常见；超长外推通常还需缩放策略</td></tr>
+          <tr><td>ALiBi</td><td>按相对距离给注意力分数加线性偏置</td><td>不直接修改 token embedding</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="mask">
+      <p class="section-kicker">可见性规则</p>
+      <h2>7. Mask：规定哪些位置有读取权限</h2>
+      <p class="section-intro">Mask 不是删除 token，而是在 softmax 前把禁止位置的分数设为极小值，使其权重变成 0。</p>
+
+      <h3>7.1 Causal mask：不能偷看未来</h3>
+      <p>长度为 4 时，True 表示允许关注：</p>
+      <pre><code>[[1, 0, 0, 0],
+ [1, 1, 0, 0],
+ [1, 1, 1, 0],
+ [1, 1, 1, 1]]</code></pre>
+      <p>第 2 行只能看位置 0、1、2，不能看位置 3。训练时目标 token 都在输入里，causal mask 防止模型直接看到答案。</p>
+
+      <h3>7.2 Padding mask：不要读取补齐位</h3>
+      <p>一个 batch 中句子长度不同，短句会补 PAD。若两条样本有效长度是 <code>[5, 3]</code>，第二条样本的 key 位置 3、4 必须被屏蔽。</p>
+
+      <h3>7.3 广播后的形状</h3>
+      <table>
+        <thead><tr><th>对象</th><th>形状</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td>scores</td><td><code>(B, H, T, T)</code></td><td>每个样本、每个头、每个 query 对每个 key 的分数</td></tr>
+          <tr><td>causal mask</td><td><code>(1, 1, T, T)</code></td><td>对所有 batch 和 head 使用同一时间规则</td></tr>
+          <tr><td>padding mask</td><td><code>(B, 1, 1, T)</code></td><td>每个样本有不同有效 key 长度</td></tr>
+          <tr><td>组合 mask</td><td>广播到 <code>(B, 1, T, T)</code></td><td>同时禁止未来和 PAD</td></tr>
+        </tbody>
+      </table>
+
+      <div class="mistake">
+        <strong>团队项目必须约定 Mask 语义</strong>
+        有的库用 True 表示“保留”，有的用 True 表示“屏蔽”。本教案统一使用 <code>True = 允许关注</code>，并把参数命名为 <code>allowed_mask</code>，避免只写含糊的 <code>mask</code>。
+      </div>
+    </section>
+
+    <section id="block">
+      <p class="section-kicker">组装一层</p>
+      <h2>8. Transformer Block：通信、加工、保真</h2>
+      <p class="section-intro">理解了 attention 仍只完成一半。真正能叠几十层甚至更多层，依赖 FFN、残差和归一化的配合。</p>
+
+      <h3>8.1 Pre-LN decoder block</h3>
+      <code class="formula">Y = X + MaskedMHA(LN(X))　　Output = Y + FFN(LN(Y))</code>
+      <div class="shape-flow">X ── LayerNorm ── Masked Multi-Head Attention ──┐
+│                                                │
+└──────────────────────── residual add ──────────┘ = Y
+
+Y ── LayerNorm ── Linear(D→D_ff) ── activation ── Linear(D_ff→D) ──┐
+│                                                                  │
+└────────────────────────── residual add ───────────────────────────┘ = Output</div>
+
+      <h3>8.2 FFN 到底做什么</h3>
+      <code class="formula">FFN(x) = activation(x @ W1 + b1) @ W2 + b2</code>
+      <p>Attention 的输出是其他 token 信息的混合；FFN 对每个位置独立使用同一套参数，把这些信息进行非线性组合。若 <code>D=8, D_ff=16</code>：</p>
+      <ul>
+        <li><code>W1</code> 形状 <code>(8, 16)</code>，先扩维；</li>
+        <li>激活函数引入非线性；</li>
+        <li><code>W2</code> 形状 <code>(16, 8)</code>，再回到残差可相加的维度。</li>
+      </ul>
+
+      <h3>8.3 残差连接为什么要求形状不变</h3>
+      <p><code>X + sublayer(X)</code> 是逐元素相加，所以子层输出必须回到 <code>(B, T, D)</code>。残差提供一条直接的信息和梯度通路，子层只需学习相对输入的改变量。</p>
+
+      <h3>8.4 LayerNorm 在归一化什么</h3>
+      <p>对每个 token 的 D 个特征分别计算均值和方差。输入 <code>(B, T, D)</code> 时，代码通常使用 <code>axis=-1</code>；它不跨 batch 聚合统计量。</p>
+
+      <div class="important">
+        <strong>原论文与现代实现要分开说</strong>
+        2017 原论文结构常称 Post-LN：子层后做残差和 LayerNorm。许多现代大模型使用 Pre-LN 或其变体以改善深层训练稳定性。本教案实战采用更容易追踪的 Pre-LN，但面试时要能说明两者区别。
+      </div>
+    </section>
+
+    <section id="families">
+      <p class="section-kicker">架构选择</p>
+      <h2>9. Encoder、Decoder-only、Encoder-Decoder</h2>
+      <p class="section-intro">“Transformer 架构”不是唯一一种固定堆法。任务需要怎样的信息流，决定保留哪些模块。</p>
+
+      <div class="segments" role="tablist" aria-label="选择 Transformer 架构">
+        <button type="button" role="tab" data-mode="encoder" aria-selected="false">Encoder-only</button>
+        <button type="button" role="tab" data-mode="decoder" aria-selected="true">Decoder-only</button>
+        <button type="button" role="tab" data-mode="encdec" aria-selected="false">Encoder-Decoder</button>
+      </div>
+      <div id="mode-output" class="mode-output" aria-live="polite">
+        <strong>Decoder-only：只看左侧上下文，逐 token 生成</strong>
+        <p>每层使用 causal self-attention，没有标准 encoder-decoder cross-attention。典型任务是续写、对话、代码生成。GPT 风格大语言模型属于这一类。</p>
+      </div>
+
+      <table>
+        <thead><tr><th>架构</th><th>注意力可见范围</th><th>典型目标</th><th>代表性用途</th></tr></thead>
+        <tbody>
+          <tr><td>Encoder-only</td><td>双向看到整段输入</td><td>得到上下文表示或分类结果</td><td>文本分类、检索编码、实体识别</td></tr>
+          <tr><td>Decoder-only</td><td>因果单向，只看当前位置及之前</td><td>预测下一个 token</td><td>通用生成式大模型</td></tr>
+          <tr><td>Encoder-Decoder</td><td>encoder 双向；decoder 因果；另有 cross-attention</td><td>根据源序列生成目标序列</td><td>翻译、摘要、受控生成</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Cross-Attention 的来源不同</h3>
+      <p>自注意力中 Q/K/V 来自同一序列。Encoder-Decoder 的 cross-attention 中，Q 来自 decoder 当前状态，K/V 来自 encoder 输出。这相当于“边写译文，边回看原文”。</p>
+    </section>
+
+    <section id="train-infer">
+      <p class="section-kicker">模型如何学与写</p>
+      <h2>10. 训练并行，生成串行</h2>
+      <p class="section-intro">同一个 decoder-only block 在训练和推理时参数相同，数据供给方式不同。</p>
+
+      <h3>10.1 训练：右移目标 + 交叉熵</h3>
+      <p>假设文本 token 是 <code>[BOS, 我, 写, 代码, EOS]</code>：</p>
+      <table>
+        <thead><tr><th>输入位置</th><th>模型应该预测</th></tr></thead>
+        <tbody>
+          <tr><td>BOS</td><td>我</td></tr>
+          <tr><td>我</td><td>写</td></tr>
+          <tr><td>写</td><td>代码</td></tr>
+          <tr><td>代码</td><td>EOS</td></tr>
+        </tbody>
+      </table>
+      <p>所有目标都已知，因此可一次算出所有位置的 logits；causal mask 保证每个位置没偷看右侧答案。交叉熵只取真实下一个 token 的负对数概率：</p>
+      <code class="formula">loss = -mean(log P(真实下一个 token | 左侧上下文))</code>
+
+      <h3>10.2 推理：循环调用前向传播</h3>
+      <pre><code>tokens = [BOS]
+while len(tokens) &lt; max_length:
+    logits = model(tokens)
+    next_token = choose(logits[-1], temperature, top_p)
+    tokens.append(next_token)
+    if next_token == EOS:
+        break</code></pre>
+
+      <h3>10.3 Temperature 改变分布，不改变知识</h3>
+      <p>使用 <code>softmax(logits / T)</code>。<code>T &lt; 1</code> 让分布更尖锐，输出更确定；<code>T &gt; 1</code> 让分布更平，随机性更高。它不会让模型突然知道训练中没学到的事实。</p>
+
+      <h3>10.4 KV cache 到底省了什么</h3>
+      <p>生成新 token 时，历史 token 的 K/V 不会改变，可以缓存。这样每一步只计算新 token 的 Q/K/V，再让新 Query 读取历史 Key/Value，避免反复重算整个前缀。标准全注意力在序列不断增长时仍需读取越来越长的缓存；KV cache 降低重复计算，不会让长上下文成本消失。</p>
+    </section>
+
+    <section id="labs">
+      <p class="section-kicker">动手闭环</p>
+      <h2>11. 五个 NumPy 实验</h2>
+      <p class="section-intro">不要先复制代码。先预测形状或输出，再运行，然后解释偏差。所有实验都在 <code>docs/stages/阶段01_大模型基础/transformer_lab.py</code>。</p>
+
+      <h3>统一环境与验收</h3>
+      <div class="lab-meta">
+        <div><strong>前提</strong>Python 3.11+；能在 PowerShell 切换目录。</div>
+        <div><strong>依赖</strong>只需要 NumPy，不调用模型 API，不需要 API Key。</div>
+        <div><strong>总验收</strong>内置自检与 9 个单元测试全部通过。</div>
+      </div>
+      <pre><code>cd docs/stages/阶段01_大模型基础
+python -m pip install numpy
+python transformer_lab.py --list
+python transformer_lab.py --self-check
+python -m unittest -v test_transformer_lab.py</code></pre>
+      <p><strong>预期：</strong>自检打印“全部自检通过”；测试最后显示 <code>OK</code>。若安装命令使用的 Python 与运行脚本的 Python 不同，始终用 <code>python -m pip</code> 绑定同一解释器。</p>
+
+      <div class="lab" id="lab-attention">
+        <h3>实验 1：看见 Q/K/V 的完整计算</h3>
+        <div class="lab-meta">
+          <div><strong>运行</strong><code>python transformer_lab.py attention</code></div>
+          <div><strong>观察</strong>四个权重之和、最大权重、输出向量。</div>
+          <div><strong>通过</strong>能解释为何输出不是某一行 V。</div>
+        </div>
+        <p>运行前先按第 4.2 节的分数，猜“代码”和“文档”谁的权重更高。再把 Query 改为 <code>[0.0, 1.0]</code> 重跑，记录排序怎样变化。</p>
+        <details>
+          <summary>卡住时看提示</summary>
+          <div>Query 第一维从 1 变 0 后，原来由 Key 第一维贡献的匹配分会消失；第二维大的 token 会得到更高分。</div>
+        </details>
+      </div>
+
+      <div class="lab" id="lab-mask">
+        <h3>实验 2：组合 causal mask 与 padding mask</h3>
+        <div class="lab-meta">
+          <div><strong>运行</strong><code>python transformer_lab.py mask</code></div>
+          <div><strong>观察</strong>第二条样本的可见矩阵与注意力矩阵。</div>
+          <div><strong>通过</strong>未来位置和 PAD 位置权重都为 0。</div>
+        </div>
+        <p>把有效长度从 <code>[5, 3]</code> 改为 <code>[4, 2]</code>。先在纸上圈出第二条样本允许读取的区域，再对照输出。</p>
+      </div>
+
+      <div class="lab" id="lab-multihead">
+        <h3>实验 3：亲手追踪多头形状</h3>
+        <div class="lab-meta">
+          <div><strong>运行</strong><code>python transformer_lab.py multihead</code></div>
+          <div><strong>观察</strong><code>(2,6,8)</code> 如何变成 <code>(2,2,6,4)</code>。</div>
+          <div><strong>通过</strong>split 后 merge 能无损恢复输入。</div>
+        </div>
+        <p>把 <code>n_heads</code> 改为 4，预测新形状。再尝试改为 3，解释为什么程序应拒绝。</p>
+      </div>
+
+      <div class="lab" id="lab-block">
+        <h3>实验 4：跑通完整 Pre-LN decoder block</h3>
+        <div class="lab-meta">
+          <div><strong>运行</strong><code>python transformer_lab.py block</code></div>
+          <div><strong>观察</strong>MHA、残差、FFN 前后形状。</div>
+          <div><strong>通过</strong>未来位置最大注意力权重为 0。</div>
+        </div>
+        <p>代码使用固定随机权重，只验证数据流。请给 <code>after_attention = x + attended</code> 前加一行打印；然后故意删掉输出投影，观察残差相加在什么形状下失败。</p>
+      </div>
+
+      <div class="lab" id="lab-generation">
+        <h3>实验 5：比较 logits、temperature 与贪心选择</h3>
+        <div class="lab-meta">
+          <div><strong>运行</strong><code>python transformer_lab.py generation</code></div>
+          <div><strong>观察</strong>T=0.5、1、2 的概率分布。</div>
+          <div><strong>通过</strong>说清 logits 最大项为何不随正温度改变。</div>
+        </div>
+        <p>把 logits 的“测试”和“代码”设为相同，观察它们概率是否相同。然后说明“概率相同”与“一定生成同一个 token”为什么不是一回事。</p>
+      </div>
+
+      <h3>进阶：完整 Encoder-Decoder 前向传播</h3>
+      <p>五个实验通过后，再运行同目录中的完整教学版：</p>
+      <pre><code>python transformer_demo.py</code></pre>
+      <p><strong>预期：</strong>编码器输出形状 <code>(4, 16)</code>，解码器 logits 形状 <code>(5, 12)</code>，并打印一个 <code>4×4</code> 注意力矩阵。该脚本权重随机且没有训练，所以 top-3 预测没有语言质量；它用于串起完整架构，不用于展示模型效果。</p>
+    </section>
+
+    <section id="debug">
+      <p class="section-kicker">定位问题</p>
+      <h2>12. Transformer 代码调试地图</h2>
+      <p class="section-intro">看到报错先记录实际 shape，再定位是哪条不变量被破坏。不要一上来换框架或盲目增加 reshape。</p>
+
+      <table>
+        <thead><tr><th>现象</th><th>先检查</th><th>常见根因</th><th>验证</th></tr></thead>
+        <tbody>
+          <tr><td>矩阵乘法维度不匹配</td><td>Q/K 最后一维；K/V 序列维</td><td>transpose 轴错、投影矩阵方向错</td><td>打印 Q/K/V shape</td></tr>
+          <tr><td>残差无法相加</td><td>子层输出是否回到 D</td><td>漏了 Wo 或 FFN 第二层</td><td>比较 x.shape 与 output.shape</td></tr>
+          <tr><td>注意力行和不是 1</td><td>softmax 的 axis</td><td>在 head 或 query 维归一化</td><td><code>weights.sum(axis=-1)</code></td></tr>
+          <tr><td>模型训练时“作弊”</td><td>未来权重是否为 0</td><td>causal mask 方向反了</td><td>检查上三角</td></tr>
+          <tr><td>出现 NaN/inf</td><td>softmax 前最大分数</td><td>未减最大值、学习率过高</td><td>先测稳定 softmax</td></tr>
+          <tr><td>PAD 影响输出</td><td>每个样本有效长度</td><td>padding mask 未广播到 key 维</td><td>检查被遮列权重</td></tr>
+          <tr><td>位置编码异常</td><td>第 0 行与 sin/cos 对</td><td>奇偶维频率没成对</td><td>测 sin²+cos²=1</td></tr>
+        </tbody>
+      </table>
+
+      <h3>最小排错模板</h3>
+      <pre><code>print("Q/K/V:", q.shape, k.shape, v.shape)
+print("scores:", scores.shape)
+print("mask:", allowed_mask.shape, allowed_mask.dtype)
+print("row sums:", weights.sum(axis=-1))
+print("finite:", np.isfinite(output).all())
+
+assert q.shape[-1] == k.shape[-1]
+assert k.shape[-2] == v.shape[-2]
+assert np.allclose(weights.sum(axis=-1), 1.0)
+assert np.isfinite(output).all()</code></pre>
+
+      <div class="important">
+        <strong>性能知识放在正确位置</strong>
+        标准注意力要构造 <code>T×T</code> 的关系，长序列会带来二次方级别的分数规模。FlashAttention 主要通过分块和 IO 优化减少中间内存读写；它不是把注意力变成另一个语义机制。先保证正确，再学性能优化。
+      </div>
+    </section>
+
+    <section id="gate">
+      <p class="section-kicker">验收闸门</p>
+      <h2>13. 不是“看完”，而是留下证据</h2>
+      <p class="section-intro">以下四项都完成，才算掌握到可以进入下一主题。答不上来的点回到对应章节，不需要重读全文。</p>
+
+      <h3>13.1 口述：3 分钟，不看稿</h3>
+      <ul class="checklist">
+        <li>从 token ID 开始，说到 logits 和下一个 token，且能指出训练与生成的区别。</li>
+        <li>用“检索”类比解释 Q/K/V，再补充这个类比的边界。</li>
+        <li>解释 Attention 与 FFN 为什么一个负责跨 token、一个负责逐 token。</li>
+        <li>说清 encoder-only、decoder-only、encoder-decoder 的信息流差异。</li>
+      </ul>
+
+      <h3>13.2 形状题：限时 5 分钟</h3>
+      <p>给定 <code>B=3, T=12, D=96, H=6, V=32000</code>，写出：</p>
+      <ol>
+        <li>切头后 Q 的形状；</li>
+        <li>attention scores 的形状；</li>
+        <li>合并多头后的形状；</li>
+        <li>最终 logits 的形状。</li>
+      </ol>
+      <details>
+        <summary>参考答案</summary>
+        <div><code>(3,6,12,16)</code>、<code>(3,6,12,12)</code>、<code>(3,12,96)</code>、<code>(3,12,32000)</code>。</div>
+      </details>
+
+      <h3>13.3 改错题</h3>
+      <pre><code>scores = q @ k.transpose(0, 1, 3, 2)
+weights = np.exp(scores) / np.exp(scores).sum(axis=1, keepdims=True)
+output = weights @ v</code></pre>
+      <p>至少指出两处问题：缺少 <code>sqrt(D_head)</code> 缩放；softmax 轴应是最后一维而不是 head 维；直接 exp 还缺少减最大值的数值稳定处理；decoder 场景还缺 causal mask。</p>
+
+      <h3>13.4 可重复验收命令</h3>
+      <pre><code>cd docs/stages/阶段01_大模型基础
+python transformer_lab.py --self-check
+python -m unittest -v test_transformer_lab.py
+python transformer_lab.py all
+python transformer_demo.py</code></pre>
+      <p><strong>通过证据：</strong>保存测试输出；选一个实验改参数并写 150 字复盘，包含“原预测、实际结果、差异原因”。</p>
+
+      <h3>面试追问清单</h3>
+      <ol>
+        <li>为什么 Q 和 K 点积后除以 <code>sqrt(D_head)</code>？</li>
+        <li>为什么多头拆分需要 transpose？</li>
+        <li>Pre-LN 与 Post-LN 的差异是什么？</li>
+        <li>训练时 decoder 为什么能并行，推理时为什么不能跨 token 并行？</li>
+        <li>KV cache 缓存什么，没解决什么？</li>
+        <li>为什么注意力权重不能被简单当作完整因果解释？</li>
+      </ol>
+    </section>
+
+    <footer>
+      <p><strong>建议顺序：</strong>诊断题 → 第 1 至 4 章 → 实验 1 → 第 5 至 8 章 → 实验 2 至 4 → 第 9 至 10 章 → 实验 5 → 完整 demo → 验收。</p>
+      <p><strong>暂不阻塞本阶段：</strong>反向传播手推、从零训练大模型、RoPE 复杂数推导、FlashAttention kernel、分布式训练。这些内容按后续项目需要再补。</p>
+      <p><strong>一手资料：</strong>Vaswani 等人的 <a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a>；代码行为以本目录测试为准。</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+  const attentionRows = [
+    {
+      label: "我",
+      values: [0.50, 0.10, 0.20, 0.20],
+      note: "“我”保留较多自身信息，同时读取任务对象。这里的数字是教学示意，不是从真实模型抽取。"
+    },
+    {
+      label: "查",
+      values: [0.08, 0.17, 0.25, 0.50],
+      note: "“查”更关注“文档”，表示动作从相关对象获取信息。"
+    },
+    {
+      label: "代码",
+      values: [0.12, 0.22, 0.48, 0.18],
+      note: "“代码”保留较多自身信息，也读取与动作和资料有关的上下文。"
+    }
+  ];
+
+  function heatClass(value) {
+    if (value >= 0.45) return "heat-4";
+    if (value >= 0.30) return "heat-3";
+    if (value >= 0.18) return "heat-2";
+    return "heat-1";
+  }
+
+  document.querySelectorAll("[data-query]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.querySelectorAll("[data-query]").forEach(function (item) {
+        item.setAttribute("aria-selected", "false");
+      });
+      button.setAttribute("aria-selected", "true");
+      const row = attentionRows[Number(button.dataset.query)];
+      const cells = row.values.map(function (value) {
+        return '<td class="' + heatClass(value) + '">' + value.toFixed(2) + "</td>";
+      }).join("");
+      document.getElementById("attention-row").innerHTML =
+        "<tr><th>" + row.label + "</th>" + cells + "</tr>";
+      document.getElementById("attention-note").textContent = row.note;
+    });
+  });
+
+  const modes = {
+    encoder: {
+      title: "Encoder-only：双向读取整段输入",
+      body: "每个 token 可以关注输入中的左右两侧，适合得到理解型表示。通常不负责自回归生成完整文本。"
+    },
+    decoder: {
+      title: "Decoder-only：只看左侧上下文，逐 token 生成",
+      body: "每层使用 causal self-attention，没有标准 encoder-decoder cross-attention。典型任务是续写、对话、代码生成。GPT 风格大语言模型属于这一类。"
+    },
+    encdec: {
+      title: "Encoder-Decoder：先读源序列，再生成目标序列",
+      body: "Encoder 双向编码输入；Decoder 用因果注意力处理已生成前缀，并通过 cross-attention 读取 Encoder 输出。"
+    }
+  };
+
+  document.querySelectorAll("[data-mode]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.querySelectorAll("[data-mode]").forEach(function (item) {
+        item.setAttribute("aria-selected", "false");
+      });
+      button.setAttribute("aria-selected", "true");
+      const mode = modes[button.dataset.mode];
+      document.getElementById("mode-output").innerHTML =
+        "<strong>" + mode.title + "</strong><p>" + mode.body + "</p>";
+    });
+  });
+
+  const navLinks = Array.from(document.querySelectorAll(".sidebar a"));
+  const sections = Array.from(document.querySelectorAll("main section"));
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(function (entries) {
+      const visible = entries
+        .filter(function (entry) { return entry.isIntersecting; })
+        .sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; });
+      if (!visible.length) return;
+      const activeId = "#" + visible[0].target.id;
+      navLinks.forEach(function (link) {
+        link.classList.toggle("active", link.getAttribute("href") === activeId);
+      });
+    }, { rootMargin: "-15% 0px -65% 0px", threshold: [0, 0.2, 0.6] });
+    sections.forEach(function (section) { observer.observe(section); });
+  }
+</script>
+</body>
+</html>
