@@ -80,6 +80,12 @@
 
 **本文件夹配套（学 1.4 前必读）：** `线性代数速成_Transformer预备.md` —— Transformer 所需的全部线性代数（向量/点积/矩阵乘法/softmax/张量），含手算例子、numpy 代码和练习题（约 3~5 小时）。
 
+**Transformer 教案与代码实战（按顺序完成）：**
+1. 阅读仓库根目录的 `Transformer完整架构深度教程.html`，先完成诊断题，再按“直觉 → shape → 手算 → 实验”学习
+2. 运行 `python transformer_lab.py --list`，依次完成 attention、mask、multihead、block、generation 五个实验
+3. 运行 `python transformer_lab.py --self-check` 和 `python -m unittest -v test_transformer_lab.py`，用自动检查验证关键性质
+4. 最后运行 `python transformer_demo.py`，串起完整 Encoder-Decoder 前向传播；随机权重未训练，预测词只用于观察数据流
+
 **推荐可视化资源（必看）：**
 - 图解 Transformer（中文）：zhuanlan.zhihu.com/p/347904940
 - 3Blue1Brown 神经网络系列（B站有中文字幕）

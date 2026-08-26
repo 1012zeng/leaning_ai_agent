@@ -18,6 +18,8 @@
 
 import numpy as np
 
+from transformer_lab import sinusoidal_position_encoding
+
 np.random.seed(42)  # 固定随机种子, 保证每次运行结果一致, 方便对照
 
 # =============================================================================
@@ -296,14 +298,8 @@ class Transformer:
         self.decoder = Decoder(vocab_size, d_model, n_heads, d_ff, n_layers)
 
     def make_positional_encoding(self, max_len):
-        """公式位置编码 (和 embedding.py 完全一致), 返回 (max_len, d_model)"""
-        pos = np.arange(max_len)[:, None]
-        i = np.arange(self.d_model)[None, :]
-        angle = pos / np.power(10000, 2 * i / self.d_model)
-        pe = np.zeros_like(angle)
-        pe[:, 0::2] = np.sin(angle[:, 0::2])
-        pe[:, 1::2] = np.cos(angle[:, 1::2])
-        return pe
+        """生成正弦位置编码，返回 (max_len, d_model)。"""
+        return sinusoidal_position_encoding(max_len, self.d_model)
 
     def make_causal_mask(self, seq_len):
         """因果掩码: 上三角为 True(禁止), 保证第 i 个位置只能看 0..i (过去和当下)"""
