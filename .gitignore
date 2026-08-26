@@ -13,7 +13,7 @@ dist/
 venv/
 .venv/
 env/
-.env
+ENV/
 
 # IDE
 .vscode/
@@ -24,3 +24,13 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Multica / Claude runtime (never commit)
+.agent_context/
+.claude/
+.multica/
+
+# Secrets
+*.env
+.env*
+!.env.example
