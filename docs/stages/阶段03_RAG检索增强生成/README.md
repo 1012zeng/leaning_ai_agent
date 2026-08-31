@@ -1,39 +1,41 @@
-# 阶段 3：RAG 检索增强生成（学习资料）
+# 阶段 03：RAG 检索增强生成
 
-> 对应任务：MUJI-6（任务 3.1 ~ 3.8）｜ 时长：约 5 周
+本阶段不是框架 API 清单。学习者要沿一条真实对象链完成读取、修改、故障定位、实验设计和工程交付：
 
-## 一、学习目标
-- 理解 RAG 三大范式（Naive / Advanced / Modular）与三大部件（检索器/生成器/增强方法）
-- 掌握文档处理（分块）、Embedding 向量化、向量数据库（Chroma/FAISS/Milvus）
-- 掌握检索优化：混合检索、Rerank、索引优化（元数据/父子/摘要索引）
-- 掌握 RAG 评估（RAGAS）与主流开源 RAG 项目
+`SourceDocument -> ParsedDocument -> Chunk -> EmbeddingRecord -> Candidate -> RankedHit -> ContextBundle -> Answer -> Citation`
 
-## 二、核心知识
-1. **为什么需要 RAG**：LLM 知识有时效性限制（训练数据截止）、私有数据不可见、幻觉
-2. **Naive RAG 流程**：文档加载→切分（chunk）→Embedding→向量库索引→query 向量化→相似度检索 TopK→拼进 Prompt→生成
-3. **Advanced RAG**：检索前（查询改写/混合检索）+ 检索后（Rerank/信息压缩/知识融合）
-4. **Modular RAG**：模块化组合，智能编排（如 GraphRAG 引入知识图谱）
-5. **评估指标**：上下文相关性、答案忠实度（faithfulness，防幻觉核心）、答案相关性
-6. **2026 趋势**：GraphRAG 落地、Agentic RAG（RAG 与 Agent 结合，检索变成可决策的工具调用）
+## 学习入口
 
-## 三、最新资料
-- 一文读懂大模型 RAG（含高级方法）：https://zhuanlan.zhihu.com/p/675509396
-- RAG 优化方案和实践：https://zhuanlan.zhihu.com/p/703182970
-- RAGAS 评估库：https://github.com/explodinggradients/ragas
-- 开源项目：RAGFlow（github.com/infiniflow/ragflow）、FastGPT（github.com/labring/FastGPT）、LangChain-Chatchat（github.com/chatchat-space/Langchain-Chatchat）、GraphRAG（github.com/microsoft/graphrag）
-- 华为云学习路径阶段 03（RAG 知识库）：https://bbs.huaweicloud.com/blogs/481390
+1. 先读 [课程入口](course/README.md)，完成诊断和环境检查。
+2. 按 L01-L06 顺序学习 [必修主线](course/lessons/)。
+3. 每章运行对应 [离线实验](labs/README.md)，不要只阅读答案。
+4. 使用固定 [评测集](evals/README.md) 比较方案，禁止凭主观体验宣布优化有效。
+5. 完成 [综合项目](course/capstone.md)、[出师试卷](course/exam.md) 和 [项目答辩](course/capstone.md#项目答辩量表)。
 
-## 四、动手实验
-- 50 篇文档 → 知识库问答机器人（核心项目）
-- 优化实验：混合检索 + Rerank 前后准确率对比
-- RAGAS 评估报告
+## 三层结构
 
-## 五、避坑
-1. 分块粒度是效果命脉：太大噪声多、太小上下文破碎，需按文档类型调
-2. 检索质量决定生成质量：先查检索 TopK 准不准，再谈生成
-3. 中文用中文 Embedding 模型（如 bge-large-zh），效果差距明显
-4. 向量库选型：小项目 Chroma 起步，生产考虑 Milvus/Qdrant
+| 层级 | 内容 | 是否阻塞结业 |
+|---|---|---|
+| 必修主线 | 可观测基线、解析与分块、Embedding/索引、混合检索与重排、引用与拒答、离线评测 | 是 |
+| 工程扩展 | 配置与版本、追踪与隐私、评测门禁、失败恢复与回滚 | 是，完成 G4 才算工程交付 |
+| 前沿选修 | GraphRAG、Agentic RAG、多模态 RAG、生产部署与成本深化 | 否 |
 
-## 六、验收标准
-- [ ] 50 文档知识库：10 问 ≥8 对且能指出依据
-- [ ] RAGAS 评估报告 + 优化前后对比已上传 GitHub
+## 阶段闸门
+
+| 闸门 | 核心证据 | 入口 |
+|---|---|---|
+| G1 跑通 | 离线 MVP 产出对象 ID 链、索引清单和 TraceEvent | [L01](course/lessons/L01_observable_naive_rag.md) |
+| G2 优化 | 固定数据、索引和 profile 后，混合检索相对基线的 Recall@5 绝对提升至少 0.10 | [L04](course/lessons/L04_retrieval_and_reranking.md) |
+| G3 评估 | 非 fixture 生成器完成质量评测，Faithfulness 不低于 0.80，并解释至少 3 个失败样例 | [L06](course/lessons/L06_evaluation_and_observability.md) |
+| G4 工程化 | 配置可追溯、TraceEvent 完整、回归门禁和恢复演练通过 | [工程扩展](course/extensions/engineering.md) |
+
+阈值只在数据集、索引、system profile、metric profile 和 judge 条件同时冻结时有效。未记录这些身份信息的分数不能用于过闸。
+
+## 权威输入
+
+- [可验收需求与对标基线](planning/01_requirements_and_benchmark.md)
+- [课程、实验与仓库架构](planning/02_learning_and_repo_architecture.md)
+- [代码与数据契约](planning/03_code_and_data_contracts.md)
+- [官方资料核对表](course/references.md)
+
+下一步：进入课程入口，先完成 20 分钟诊断，不要直接跳到向量数据库或框架章节。
