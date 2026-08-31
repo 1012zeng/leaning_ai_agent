@@ -252,7 +252,7 @@ FilterExpr = {}
 | `locale` | string | 是 | F | BCP 47，如 `zh-CN` |
 | `filters` | object | 是 | F | 调用者声明的结构化过滤条件 |
 | `top_k` | integer 1..100 | 是 | F | 调用者期望候选数 |
-| `retrieval_profile` | ProfileRef | 是 | D | 通道、阈值、融合配置 |
+| `retrieval_profile` | ProfileRef | 是 | D | 召回通道、各通道参数与候选阈值；不包含 RRF/重排参数 |
 | `index_id` | string | 是 | D | 本次读取的不可变索引快照 |
 | `rewrite_steps` | object[] | 是 | D | 每步 `kind/input_hash/output_text/profile` |
 
@@ -262,7 +262,7 @@ FilterExpr = {}
 - **常见错误**：`INVALID_FILTER`、`INDEX_NOT_READY`、`IDEMPOTENCY_CONFLICT`、改写覆盖原问题导致无法复盘。
 
 ```json
-{"schema_version":"1.0.0","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","tenant_id":"course","original_text":"番茄蛋汤怎么做？","normalized_text":"番茄蛋汤 制作步骤 原料","locale":"zh-CN","filters":{"field":"category","operator":"eq","value":"汤品"},"top_k":20,"retrieval_profile":{"profile_id":"retrieve.hybrid_rrf","profile_version":"1.0.0","config_hash":"sha256:fe71..."},"index_id":"idx_course_20260829_01","rewrite_steps":[{"kind":"query_rewrite","input_hash":"sha256:421d...","output_text":"番茄蛋汤 制作步骤 原料","profile":{"profile_id":"rewrite.cooking","profile_version":"1.0.0","config_hash":"sha256:8be2..."}}]}
+{"schema_version":"1.0.0","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","tenant_id":"course","original_text":"番茄蛋汤怎么做？","normalized_text":"番茄蛋汤 制作步骤 原料","locale":"zh-CN","filters":{"field":"category","operator":"eq","value":"汤品"},"top_k":20,"retrieval_profile":{"profile_id":"retrieve.hybrid_channels","profile_version":"1.0.0","config_hash":"sha256:fe71..."},"index_id":"idx_course_20260829_01","rewrite_steps":[{"kind":"query_rewrite","input_hash":"sha256:421d...","output_text":"番茄蛋汤 制作步骤 原料","profile":{"profile_id":"rewrite.cooking","profile_version":"1.0.0","config_hash":"sha256:8be2..."}}]}
 ```
 
 ### 3.6 `Candidate`
@@ -309,7 +309,7 @@ FilterExpr = {}
 | `rank` | integer >= 1 | 是 | D | 全局排名 |
 | `final_score` | number | 是 | D | 仅在同一 rerank profile 内可比较 |
 | `score_components` | object | 是 | D | 通道分、融合分、reranker 分的命名分解 |
-| `rerank_profile` | ProfileRef | 是 | D | 排序模型/算法/阈值 |
+| `rerank_profile` | ProfileRef | 是 | D | RRF 参数、可选精排模型、fallback 与上下文准入阈值的唯一版本化配置 |
 | `eligible_for_context` | boolean | 是 | D | 是否达到上下文阈值 |
 | `decision_codes` | string[] | 是 | D | 如 `PASSED_THRESHOLD`、`DEDUPED_PARENT` |
 
@@ -319,7 +319,7 @@ FilterExpr = {}
 - **常见错误**：重排后丢失 Candidate 证据、仅返回正文没有 chunk ID、阈值变化未版本化、并列分数导致非确定顺序；并列时按 `chunk_id` 升序稳定打破。
 
 ```json
-{"schema_version":"1.0.0","ranked_hit_id":"hit_a57f707790895e23d08072927459f04a","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","chunk_id":"chk_1a3a555a2d1c6cfebbb7744a9a00c071","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","candidate_ids":["can_4070ae5762605c268f22a6dd176021c5","can_0a7c..."],"rank":1,"final_score":0.927,"score_components":{"rrf":0.0325,"cross_encoder":0.927},"rerank_profile":{"profile_id":"rerank.bge","profile_version":"1.0.0","config_hash":"sha256:d12a..."},"eligible_for_context":true,"decision_codes":["PASSED_THRESHOLD"]}
+{"schema_version":"1.0.0","ranked_hit_id":"hit_a57f707790895e23d08072927459f04a","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","chunk_id":"chk_1a3a555a2d1c6cfebbb7744a9a00c071","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","candidate_ids":["can_4070ae5762605c268f22a6dd176021c5","can_0a7c..."],"rank":1,"final_score":0.927,"score_components":{"rrf":0.0325,"cross_encoder":0.927},"rerank_profile":{"profile_id":"rerank.rrf_bge","profile_version":"1.0.0","config_hash":"sha256:d12a..."},"eligible_for_context":true,"decision_codes":["PASSED_THRESHOLD"]}
 ```
 
 ### 3.8 `Citation`
@@ -431,7 +431,7 @@ FilterExpr = {}
 - **常见错误**：高基数正文进入 metrics、日志泄漏 prompt/密钥、重试未关联原 span、事件时间被当作领域对象创建时间。
 
 ```json
-{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
+{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_channels"}}
 ```
 
 ## 4. 辅助契约
@@ -479,12 +479,13 @@ StageResult<T> = {
 ItemResult = {
   item_key: string,
   status: "created" | "updated" | "unchanged" | "failed" | "quarantined",
+  outcome_code?: string,
   output_refs: object,
   problem?: ProblemDetails
 }
 ```
 
-`partial_success` 必须有至少一个成功项和一个失败/隔离项；顶层 failed 表示没有可提交输出或事务级失败。逐项失败不得用日志文本代替结构化 `problem`。
+`partial_success` 必须有至少一个成功项和一个失败/隔离项；顶层 failed 表示没有可提交输出或事务级失败。逐项失败不得用日志文本代替结构化 `problem`。`outcome_code` 是 stage-specific 稳定机器码，不扩张通用 status 枚举；ingestion 至少定义 `RESTORED`、`METADATA_UPDATED`，失败原因仍只放 `problem.code`。
 
 ## 5. Pipeline 阶段接口
 
@@ -519,7 +520,7 @@ class EvaluationPort(Protocol):
 
 | 阶段 | 输入 | 输出 | 成功/空结果语义 | 阶段负责的错误 |
 |---|---|---|---|---|
-| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 且最新状态 active、来源事实未变为 `unchanged`；tombstoned 后重新发现为 `restored`；URI/显示名/白名单 metadata 变化为 `metadata_updated`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希、生命周期状态转换 |
+| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 且最新状态 active、来源事实未变为 `status=unchanged`；tombstoned 后重新发现为 `status=updated, outcome_code=RESTORED`；URI/显示名/白名单 metadata 变化为 `status=updated, outcome_code=METADATA_UPDATED`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希、生命周期状态转换 |
 | indexing | `IndexBuildCommand{index_build_id, corpus_version, chunk_ids[], embedding_profile, index_profile, publish_alias?, expected_active_index_id?}` | `IndexBuildReport{IndexManifest, embedding_refs, item_results}` | 先写 staging；完整验证后 manifest `ready`；部分成功默认不发布 alias | embedding、维度、批写、后端 schema、manifest 校验、alias CAS |
 | retrieval | 完整 `RetrievalQuery` | `CandidateSet{query_id,index_id,candidates[]}` | 无命中返回 success + `candidates=[]`，不是 404/500 | 查询校验、filter、index readiness、后端超时 |
 | rerank | `RerankCommand{query_id,candidate_ids[],rerank_profile,limit}` | `RankedHitSet{query_id,hits[],confidence}` | port 按 ID 从同一 pipeline snapshot 解析不可变对象；空 candidates 返回 success + 空 hits；低于阈值仍返回 hits，但全部 `eligible_for_context=false` | 候选引用、模型超时、分数非有限、profile 不兼容 |
@@ -550,7 +551,7 @@ class EvaluationPort(Protocol):
 Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供应商 `Hit`。Rerank 请求必须携带完整 query、candidate IDs 和 profile：
 
 ```json
-{"schema_version":"1.0.0","request_id":"0198f902-b68d-7823-8d8a-99f4ff2d30fa","idempotency_key":"rerank:0198f8d7:profile-1","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"],"rerank_profile":{"profile_id":"rerank.bge","profile_version":"1.0.0","config_hash":"sha256:d12a..."},"limit":5}
+{"schema_version":"1.0.0","request_id":"0198f902-b68d-7823-8d8a-99f4ff2d30fa","idempotency_key":"rerank:0198f8d7:profile-1","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"],"rerank_profile":{"profile_id":"rerank.rrf_bge","profile_version":"1.0.0","config_hash":"sha256:d12a..."},"limit":5}
 ```
 
 `confidence` 的定义由 rerank profile 固化，例如 top-1 校准分数或 margin；禁止把任意库的 distance 直接叫 confidence。
@@ -634,7 +635,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 |---|---|---|
 | 0 bytes 或只含空白 | `EMPTY_DOCUMENT`，item quarantined，0 ParsedDocument/Chunk | `ingestion_quarantined_total{code}` |
 | UTF-8 中混入非法 bytes | strict profile 返回 `DECODE_ERROR`；lenient profile 记录 replacement count/warning | `parse_replacement_char_count` |
-| 同内容重复导入 | 最新状态 active 且来源事实/profile 均未变时为 `unchanged`；若最新状态 tombstoned 则追加 active 快照并返回 `restored`；来源 URI/显示名/白名单 metadata 变化则追加状态快照并返回 `metadata_updated`，均不重复解析/向量化 | `ingestion_unchanged_total`、`ingestion_restored_total`、`ingestion_metadata_updated_total` |
+| 同内容重复导入 | 最新状态 active 且来源事实/profile 均未变时为 `status=unchanged`；若最新状态 tombstoned 则追加 active 快照并返回 `status=updated, outcome_code=RESTORED`；来源 URI/显示名/白名单 metadata 变化则追加状态快照并返回 `status=updated, outcome_code=METADATA_UPDATED`；仅 profiles 未变时复用完整派生链，profiles 变化时重建受影响的派生对象 | `ingestion_unchanged_total`、`ingestion_restored_total`、`ingestion_metadata_updated_total` |
 | 不同来源 URI 但内容相同 | 默认保留两个 logical document，允许共享 blob；除非 dedupe policy 明确合并 alias | `duplicate_content_groups` |
 | 单 chunk 超 profile 限制 | `CHUNK_TOO_LARGE`，不得让 embedding 静默截断 | `chunk_oversize_total`、chunk token p99 |
 | embedding 512 -> 1024 维 | 原索引拒绝写；创建新 index build，ready 后切 alias | `embedding_dimension_mismatch_total`、build coverage |
@@ -648,7 +649,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 ### 8.1 内容变更与删除
 
 1. 连接器用 `(tenant, connector, external_source_id)` 找到稳定 `source_document_id`。
-2. bytes hash 未变：先读取该 `source_document_id` 的最新状态。若为 tombstoned，追加同内容版本的 active 状态快照并返回 `restored`；若仍 active 但 URI/显示名/白名单 metadata 改变，追加状态快照并返回 `metadata_updated`；只有状态和来源事实均未变时返回 `unchanged`。三种情况均复用既有 ParsedDocument/Chunk/EmbeddingRecord，不重新解析/向量化；会影响 filter 的来源事实变化必须发布新 corpus/index manifest。
+2. bytes hash 未变：先独立比较 lifecycle、来源事实和 parser/chunk profiles。tombstoned 来源追加同内容版本的 active 状态快照并返回 `status=updated, outcome_code=RESTORED`；URI/显示名/白名单 metadata 改变时追加状态快照并返回 `status=updated, outcome_code=METADATA_UPDATED`。profiles 未变时复用既有 ParsedDocument/Chunk/EmbeddingRecord；parser profile 变化时从 ParsedDocument 起生成新派生链，只有 chunk profile 变化时复用 ParsedDocument 并从 Chunk 起生成新派生链。只有 lifecycle、来源事实和 profiles 均未变时返回 `status=unchanged`；状态 outcome 与 profile 重建可同时发生。新派生链以及影响 filter 的来源事实变化都必须发布新 corpus/index manifest。
 3. bytes hash 改变：新增 SourceDocument version、ParsedDocument、Chunk、EmbeddingRecord；旧版本保持可读。
 4. 构建包含新版本的 immutable index，验证 coverage 和评测门槛后原子切换 alias。
 5. 来源删除：保留 `source_document_id` 和最后的 `source_version_id`，追加具有新 `source_state_id/state_effective_at` 且 `lifecycle_state=tombstoned` 的 SourceDocument 状态快照，再建新 corpus/index；旧快照与旧 index 用于历史 Answer/Citation 复盘，按保留策略异步回收。
@@ -665,8 +666,9 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 | 条件 | 结果 |
 |---|---|
 | 同 external source + 同 bytes + 同 profiles + 最新状态 active + 来源事实未变 | `unchanged`，返回已有对象引用 |
-| 同 external source + 同 bytes + 最新状态 tombstoned | 追加 active SourceDocument 状态快照，返回 `restored`；复用既有派生链并发布新 corpus/index manifest |
-| 同 external source + 同 bytes + URI/显示名/白名单 metadata 变化 | 追加 active 状态快照，返回 `metadata_updated`；复用既有派生链，filterable metadata 变化时发布新 index manifest |
+| 同 external source + 同 bytes + parser 或 chunk profile 变化 | 保留 `source_version_id`；parser profile 变化时从 ParsedDocument 起、仅 chunk profile 变化时从 Chunk 起生成新派生 ID，并重建后续 embedding/index；若同时恢复或更新 metadata，仍返回对应 outcome code |
+| 同 external source + 同 bytes + 最新状态 tombstoned + 同 profiles | 追加 active SourceDocument 状态快照，返回 `status=updated, outcome_code=RESTORED`；复用既有派生链并发布新 corpus/index manifest |
+| 同 external source + 同 bytes + URI/显示名/白名单 metadata 变化 + 同 profiles | 追加 active 状态快照，返回 `status=updated, outcome_code=METADATA_UPDATED`；复用既有派生链，filterable metadata 变化时发布新 index manifest |
 | 同 external source + 新 bytes | 新 source version 与全套派生链 |
 | 不同 external source + 同 bytes | 两个 SourceDocument，共享 content-addressed blob；默认各自生成可追溯派生链 |
 | 同 idempotency key + 同 payload hash | 返回第一次的 StageResult，不重复副作用 |
@@ -790,7 +792,7 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 ### 9.6 运行轨迹 `trace_events.jsonl`
 
 ```jsonl
-{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
+{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_channels"}}
 {"schema_version":"1.0.0","event_id":"0198f8de-19f1-7275-95a0-932974eea009","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"8c72b32f9a4dbe11","parent_span_id":"00f067aa0ba902b7","sequence":7,"stage":"rerank","event_type":"fallback","occurred_at":"2026-08-29T09:00:01Z","status":"degraded","input_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"output_refs":{"ranked_hit_ids":["hit_a57f707790895e23d08072927459f04a"]},"metrics":{"duration_ms":1000},"attributes":{"fallback_profile_id":"rerank.rrf_only"},"problem":{"type":"https://contracts.example/rag/problems/upstream-timeout","title":"Reranker timed out","status":504,"detail":"Rerank budget of 1000 ms was exceeded.","instance":"urn:request:0198f902","code":"UPSTREAM_TIMEOUT","stage":"rerank","retryable":true}}
 ```
 
@@ -832,7 +834,9 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 3. 缺必填字段、未知 major、未知关键 enum -> 明确拒绝。
 4. JSONL 中一个坏行 -> 报行号/item problem；其他行按调用方 partial policy 处理。
 5. ID golden tests：固定输入/profile 永远得到同 ID；修改任一哈希输入必得不同 ID。
-6. 生命周期状态选择：固定 `active -> tombstoned -> restored(active)` 事件序列，断言每一步都先按 `source_document_id` 选择最新快照再判断状态；tombstoned 阶段不得返回旧 active，restored 阶段复用原 `source_version_id` 但使用新 `source_state_id`。
+6. 生命周期状态选择：固定 `active -> tombstoned -> restored(active)` 事件序列，断言每一步都先按 `source_document_id` 选择最新快照再判断状态；tombstoned 阶段不得返回旧 active，恢复阶段返回 `status=updated, outcome_code=RESTORED`，复用原 `source_version_id` 但使用新 `source_state_id`。
+7. Profile 转换：固定相同 bytes，分别修改 parser profile 与 chunk profile；前者必须生成新的 ParsedDocument/Chunk 链，后者必须复用 ParsedDocument 并生成新的 Chunk 链，两者均不得返回 `status=unchanged`。
+8. 排序配置归属：retrieval profile schema 出现 RRF 参数或 rerank profile 缺少融合算法 identity 时拒绝配置；同一 CandidateSet 修改 RRF 参数必须生成新的 RankedHit ID。
 
 ## 11. “术语 -> 代码 -> 对象 -> 指标 -> 故障”映射
 

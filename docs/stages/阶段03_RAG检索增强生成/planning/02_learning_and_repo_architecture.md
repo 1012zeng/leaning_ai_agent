@@ -195,7 +195,7 @@ flowchart LR
 | **职责**： | 从本地/仓库源连接器获取原始文档 → 解析为 ParsedDocument → 按 chunk profile 切分为 Chunk |
 | **输入**： | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` |
 | **输出**： | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` |
-| **成功/空结果语义**： | 相同来源 + 内容 + profiles 且最新状态仍 active、来源事实未变 → `unchanged`；最新状态 tombstoned 时重新发现同来源 → `restored` 并追加 active 状态；URI/显示名/白名单 metadata 变化 → `metadata_updated`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk |
+| **成功/空结果语义**： | 相同来源 + 内容 + profiles 且最新状态仍 active、来源事实未变 → `status=unchanged`；最新状态 tombstoned 时重新发现同来源 → `status=updated, outcome_code=RESTORED` 并追加 active 状态；URI/显示名/白名单 metadata 变化 → `status=updated, outcome_code=METADATA_UPDATED`；parser/chunk profile 变化时保留内容版本但重建受影响的派生链；生命周期/metadata 结果与 profile 重建可同时发生；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk |
 | **阶段负责的错误**： | 读取、媒体类型、解码、解析、超长块、内容哈希 |
 | **失败语义**： | `EMPTY_DOCUMENT` → 隔离（quarantined）；`DECODE_ERROR` → 隔离；`CONTENT_HASH_MISMATCH` → 拒绝 bytes；`CHUNK_TOO_LARGE` → 隔离 |
 | **禁止依赖**： | **禁止**依赖 indexing/retrieval/generation 任何下游模块；**禁止**直接调用 embedding 模型；**禁止**把运行时观测数据（latency/trace_id）写进领域对象 |
