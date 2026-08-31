@@ -130,7 +130,7 @@ flowchart TD
 |---|---|---|---|
 | **G1 跑通** | L02 后 | lab01 MVP 端到端跑通，输出可检索的 chunk 与向量索引 | `make lab01` 通过，输出 index manifest |
 | **G2 优化** | L04 后 | 在固定 `dataset_id@version`、index 与 metric profile 下，lab04 的 Recall@5 比 Naive 基线绝对提升 ≥ 0.10（10 个百分点） | `make lab04` 输出带 dataset/index/profile/hash 的对比报告 |
-| **G3 评估** | L06 后 | 在固定 `dataset_id@version`、system/metric profile 下，lab06 Faithfulness ≥ 0.80，并至少完成 3 个失败实验 | `make lab06` 输出带 manifest/profile/hash 的评估报告 + 失败实验记录 |
+| **G3 评估** | L06 后 | 在固定 `dataset_id@version`、system/metric profile 下，使用非 fixture 的真实本地/云端生成模型完成 lab06；Faithfulness ≥ 0.80，judge 使用独立真实模型或双人盲审，并至少完成 3 个失败实验 | `make lab06 MODE=quality` 拒绝 fixture profile，输出带 manifest/profile/hash 的评估报告、judge/人工复核证据 + 失败实验记录 |
 | **G4 工程化** | E04 后 | 全链路配置化 + TraceEvent 可查 + CI 回归通过 | `make ci` 通过，trace 可查 |
 
 ### 1.3 与学习任务清单的映射
@@ -195,7 +195,7 @@ flowchart LR
 | **职责**： | 从本地/仓库源连接器获取原始文档 → 解析为 ParsedDocument → 按 chunk profile 切分为 Chunk |
 | **输入**： | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` |
 | **输出**： | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` |
-| **成功/空结果语义**： | 相同来源 + 内容 + profiles → `unchanged`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk |
+| **成功/空结果语义**： | 相同来源 + 内容 + profiles 且最新状态仍 active、来源事实未变 → `unchanged`；最新状态 tombstoned 时重新发现同来源 → `restored` 并追加 active 状态；URI/显示名/白名单 metadata 变化 → `metadata_updated`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk |
 | **阶段负责的错误**： | 读取、媒体类型、解码、解析、超长块、内容哈希 |
 | **失败语义**： | `EMPTY_DOCUMENT` → 隔离（quarantined）；`DECODE_ERROR` → 隔离；`CONTENT_HASH_MISMATCH` → 拒绝 bytes；`CHUNK_TOO_LARGE` → 隔离 |
 | **禁止依赖**： | **禁止**依赖 indexing/retrieval/generation 任何下游模块；**禁止**直接调用 embedding 模型；**禁止**把运行时观测数据（latency/trace_id）写进领域对象 |
@@ -216,7 +216,7 @@ flowchart LR
 
 | 项 | 定义 |
 |---|---|
-| **职责**： | 接收 RetrievalQuery → 查询改写 → 多通道（dense/sparse）召回 → 汇总为保留 `channel/raw_rank/raw_score` 的 CandidateSet；不在本阶段执行 RRF |
+| **职责**： | 接收 RetrievalQuery → 查询改写 → 多通道（dense/sparse）召回 → 汇总为保留 `retrieval_channel/channel_rank/raw_score` 的 CandidateSet；不在本阶段执行 RRF |
 | **输入**： | 完整 `RetrievalQuery`（含 original_text、normalized_text、filters、top_k、retrieval_profile、index_id、rewrite_steps） |
 | **输出**： | `CandidateSet{query_id, index_id, candidates[]}` |
 | **成功/空结果语义**： | 无命中返回 success + `candidates=[]`，不是 404/500 |
@@ -368,7 +368,8 @@ answer_id → citation_id → ranked_hit_id → chunk_id → parsed_document_id 
 
 | 领域对象 | 归属模块 | 类别 | 引用 |
 |---|---|---|---|
-| `SourceDocument` / `ParsedDocument` / `Chunk` | ingestion | D（派生） | MUJI-19 §3.1–3.3 |
+| `SourceDocument` | ingestion | F + D（来源/生命周期事实 + 内容身份与校验派生值） | MUJI-19 §3.1 |
+| `ParsedDocument` / `Chunk` | ingestion | D（派生） | MUJI-19 §3.2–3.3 |
 | `EmbeddingRecord` / `IndexManifest` | indexing | D | MUJI-19 §3.4, §4.1 |
 | `RetrievalQuery` / `Candidate` | retrieval | D | MUJI-19 §3.5–3.6 |
 | `RankedHit` | rerank | D | MUJI-19 §3.7 |
@@ -446,7 +447,7 @@ class EvaluationPort(Protocol):
 | **状态** | 接受（Accepted） |
 | **背景** | 学员常因 API Key 缺失、网络限制、额度耗尽而无法跑通实验。教学实验必须保证「零密钥也能跑通基线」。 |
 | **备选方案** | A) 全程依赖云端 API（OpenAI / DeepSeek）；B) **本地模型 + 本地嵌入 + FAISS 作为默认基线**，云端 API 作为可选扩展 |
-| **决策** | 采用方案 B：默认检索基线使用本地嵌入模型（如 `bge-small-zh-v1.5`）+ FAISS；CI/零密钥生成与 judge 评测使用版本化 deterministic fixture adapter，保证全部 lab 可回归；Ollama（如 `qwen2.5`）用于本地真实模型扩展，云端 API 通过 adapter 注入，均不改变 port |
+| **决策** | 采用方案 B：默认检索基线使用本地嵌入模型（如 `bge-small-zh-v1.5`）+ FAISS；CI/零密钥契约回归使用版本化 deterministic fixture adapter；fixture 只证明调用链、schema 和失败恢复，不计入 G3 质量闸门。学员质量验收使用 Ollama 等本地真实模型（无 API Key）或云端模型，均通过 adapter 注入且不改变 port |
 | **理由** | 保证任何学员在离线环境下跑通必修主线；云端 API 作为「进阶选项」而非「前置条件」 |
 | **后果** | 本地模型效果弱于云端大模型，但足以演示流程；需在教案中明确「基线效果 ≠ 生产效果」 |
 | **依据** | Ollama 官方文档支持本地运行开源模型 [^3]；sentence-transformers 支持离线嵌入 [^4]；FAISS 纯本地向量检索 [^5]；核对日期 2026-08-29 |
@@ -519,7 +520,7 @@ class EvaluationPort(Protocol):
 |---|---|---|---|
 | **可复现性** | 相同代码 + 配置 + dataset manifest → 确定性对象 ID 与相同结构化产物；真实模型文本只要求固定评测门槛，不承诺逐字节一致 | CI 跑 `make lab01-lab06`，校验 manifest/config/code hash，并比较 chunk/index/output/metric artifact checksum；真实模型路径比较指标与 schema | 锁定依赖版本（ADR-003）；确定性 ID（MUJI-19 §2.2）；区分 deterministic fixture 与真实模型 |
 | **启动时间** | 离线基线冷启动（含嵌入模型加载）≤ 60s；索引缓存命中 ≤ 5s | `make bench-startup` 计时 | 索引持久化缓存（MUJI-19 §4.1 IndexManifest） |
-| **无密钥路径** | 必修主线 100% 可在无 API Key、无 Ollama 环境下跑通 | CI 清空云端密钥且禁用 Ollama，使用 fixture adapter 跑通全部 lab；另设 Ollama 可选集成测试 | 本地嵌入 + FAISS + deterministic generation/judge fixture；Ollama 可选（ADR-002） |
+| **无密钥路径** | CI 契约路径 100% 可在无 API Key、无 Ollama 环境下回归；学员 G3 可在无 API Key 环境用 Ollama 等真实本地模型完成，但 fixture 结果不得作为质量验收证据 | CI 清空云端密钥且禁用 Ollama，以 fixture 跑 schema/调用链/错误恢复；`make lab06 MODE=quality` 必须检测并拒绝 fixture generator/judge | 本地嵌入 + FAISS + deterministic fixture 负责工程回归；真实本地/云端模型 + 独立 judge/人工复核负责质量闸门（ADR-002） |
 | **测试** | 单元测试 + 契约测试 + 边界场景测试覆盖率 ≥ 80% | `make test` + coverage 报告 | MUJI-19 §7.1 必测边界场景作为回归基线 |
 | **性能预算** | 单 query 端到端（检索+生成）p95 ≤ 30s（离线基线） | `make bench-e2e` 输出延迟分布 | 超时降级（ADR-005 追踪 + ADR-007 失败实验） |
 | **安全** | 无密钥/个人信息泄漏；日志只记 ID/计数/哈希 | 静态检查 + 日志审计 | MUJI-19 §1 禁止在日志中复制原文/完整 prompt/向量/密钥 |
@@ -550,7 +551,7 @@ class EvaluationPort(Protocol):
 | **评估深度** | C6 使用 LlamaIndex evaluator 展示局部评估，未建立版本化评测集与完整 RAGAS 三元组门禁 | L06 + lab06 端到端评估 + 失败实验 + 量化报告 |
 | **可观测性** | 无 TraceEvent | M8 observability 模块，append-only TraceEvent 链 |
 | **工程扩展** | 无工程化内容 | E01–E04 配置化/可观测/评测门禁/失败实验系统化 |
-| **离线基线** | 依赖云端 API | ADR-002 无密钥路径：本地嵌入 + FAISS + deterministic fixture；Ollama 为真实模型扩展 |
+| **离线基线** | 依赖云端 API | ADR-002 分两层：fixture 负责无模型的契约回归；Ollama 等真实本地模型负责无 API Key 的学习质量验收 |
 
 ### 7.3 不应照搬的点（明确摒弃）
 

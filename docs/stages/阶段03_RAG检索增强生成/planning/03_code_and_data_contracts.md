@@ -67,7 +67,7 @@ flowchart LR
 
 - 编码：UTF-8；JSONL 每行一个完整 JSON 对象，行尾 `LF`。
 - 命名：JSON 字段统一 `snake_case`；代码中的 DTO/模型类使用 PascalCase。
-- 时间：只在观测/作业对象中使用 RFC 3339 UTC，例如 `2026-08-29T09:00:00Z`。
+- 时间：观测/作业时间及来源生命周期的 `state_effective_at` 使用 RFC 3339 UTC，例如 `2026-08-29T09:00:00Z`；领域有效时间属于来源事实（F），不得拿处理机本地时间推导内容身份（D）。
 - 哈希：小写十六进制 SHA-256；哈希输入先按字段规定做 UTF-8 编码。禁止 MD5 用于身份或完整性。
 - 数字：分数和向量元素必须是有限数；禁止 `NaN`、`Infinity`、`-Infinity`。
 - 文本跨度：统一半开区间 `[start, end)`，按 Unicode code point 计数；不得混用 UTF-8 byte offset。
@@ -519,7 +519,7 @@ class EvaluationPort(Protocol):
 
 | 阶段 | 输入 | 输出 | 成功/空结果语义 | 阶段负责的错误 |
 |---|---|---|---|---|
-| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 为 `unchanged`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希 |
+| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 且最新状态 active、来源事实未变为 `unchanged`；tombstoned 后重新发现为 `restored`；URI/显示名/白名单 metadata 变化为 `metadata_updated`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希、生命周期状态转换 |
 | indexing | `IndexBuildCommand{index_build_id, corpus_version, chunk_ids[], embedding_profile, index_profile, publish_alias?, expected_active_index_id?}` | `IndexBuildReport{IndexManifest, embedding_refs, item_results}` | 先写 staging；完整验证后 manifest `ready`；部分成功默认不发布 alias | embedding、维度、批写、后端 schema、manifest 校验、alias CAS |
 | retrieval | 完整 `RetrievalQuery` | `CandidateSet{query_id,index_id,candidates[]}` | 无命中返回 success + `candidates=[]`，不是 404/500 | 查询校验、filter、index readiness、后端超时 |
 | rerank | `RerankCommand{query_id,candidate_ids[],rerank_profile,limit}` | `RankedHitSet{query_id,hits[],confidence}` | port 按 ID 从同一 pipeline snapshot 解析不可变对象；空 candidates 返回 success + 空 hits；低于阈值仍返回 hits，但全部 `eligible_for_context=false` | 候选引用、模型超时、分数非有限、profile 不兼容 |
@@ -634,7 +634,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 |---|---|---|
 | 0 bytes 或只含空白 | `EMPTY_DOCUMENT`，item quarantined，0 ParsedDocument/Chunk | `ingestion_quarantined_total{code}` |
 | UTF-8 中混入非法 bytes | strict profile 返回 `DECODE_ERROR`；lenient profile 记录 replacement count/warning | `parse_replacement_char_count` |
-| 同内容重复导入 | 相同 source/version/profile 全部 `unchanged`，不新增 chunk/vector | `ingestion_unchanged_total` |
+| 同内容重复导入 | 最新状态 active 且来源事实/profile 均未变时为 `unchanged`；若最新状态 tombstoned 则追加 active 快照并返回 `restored`；来源 URI/显示名/白名单 metadata 变化则追加状态快照并返回 `metadata_updated`，均不重复解析/向量化 | `ingestion_unchanged_total`、`ingestion_restored_total`、`ingestion_metadata_updated_total` |
 | 不同来源 URI 但内容相同 | 默认保留两个 logical document，允许共享 blob；除非 dedupe policy 明确合并 alias | `duplicate_content_groups` |
 | 单 chunk 超 profile 限制 | `CHUNK_TOO_LARGE`，不得让 embedding 静默截断 | `chunk_oversize_total`、chunk token p99 |
 | embedding 512 -> 1024 维 | 原索引拒绝写；创建新 index build，ready 后切 alias | `embedding_dimension_mismatch_total`、build coverage |
@@ -648,7 +648,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 ### 8.1 内容变更与删除
 
 1. 连接器用 `(tenant, connector, external_source_id)` 找到稳定 `source_document_id`。
-2. bytes hash 未变：返回 `unchanged`，不得重新解析/向量化。
+2. bytes hash 未变：先读取该 `source_document_id` 的最新状态。若为 tombstoned，追加同内容版本的 active 状态快照并返回 `restored`；若仍 active 但 URI/显示名/白名单 metadata 改变，追加状态快照并返回 `metadata_updated`；只有状态和来源事实均未变时返回 `unchanged`。三种情况均复用既有 ParsedDocument/Chunk/EmbeddingRecord，不重新解析/向量化；会影响 filter 的来源事实变化必须发布新 corpus/index manifest。
 3. bytes hash 改变：新增 SourceDocument version、ParsedDocument、Chunk、EmbeddingRecord；旧版本保持可读。
 4. 构建包含新版本的 immutable index，验证 coverage 和评测门槛后原子切换 alias。
 5. 来源删除：保留 `source_document_id` 和最后的 `source_version_id`，追加具有新 `source_state_id/state_effective_at` 且 `lifecycle_state=tombstoned` 的 SourceDocument 状态快照，再建新 corpus/index；旧快照与旧 index 用于历史 Answer/Citation 复盘，按保留策略异步回收。
@@ -664,7 +664,9 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 
 | 条件 | 结果 |
 |---|---|
-| 同 external source + 同 bytes + 同 profiles | `unchanged`，返回已有对象引用 |
+| 同 external source + 同 bytes + 同 profiles + 最新状态 active + 来源事实未变 | `unchanged`，返回已有对象引用 |
+| 同 external source + 同 bytes + 最新状态 tombstoned | 追加 active SourceDocument 状态快照，返回 `restored`；复用既有派生链并发布新 corpus/index manifest |
+| 同 external source + 同 bytes + URI/显示名/白名单 metadata 变化 | 追加 active 状态快照，返回 `metadata_updated`；复用既有派生链，filterable metadata 变化时发布新 index manifest |
 | 同 external source + 新 bytes | 新 source version 与全套派生链 |
 | 不同 external source + 同 bytes | 两个 SourceDocument，共享 content-addressed blob；默认各自生成可追溯派生链 |
 | 同 idempotency key + 同 payload hash | 返回第一次的 StageResult，不重复副作用 |
@@ -740,7 +742,7 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 
 ### 9.2 语料 `corpus.jsonl`
 
-每行是一个不可变 SourceDocument 内容/状态快照。相同 `source_version_id` 可因删除或恢复出现多个不同 `source_state_id`；加载当前语料时只选按 `(state_effective_at, source_state_id)` 排序的最新 active 快照。原始内容不内联，防止 JSONL 膨胀并保持 bytes 校验。
+每行是一个不可变 SourceDocument 内容/状态快照。相同 `source_version_id` 可因删除或恢复出现多个不同 `source_state_id`。加载当前语料时，必须先按 `source_document_id` 分组，在每组全部状态中按 `(state_effective_at, source_state_id)` 选择唯一最新快照；仅当该最新快照的 `lifecycle_state=active` 时才纳入当前语料。禁止先过滤 active，否则会让后到的 tombstone 失效并复活旧内容。原始内容不内联，防止 JSONL 膨胀并保持 bytes 校验。
 
 ```jsonl
 {"schema_version":"1.0.0","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","source_state_id":"0198f8c1-a129-7ca0-9c7a-e0e96f6cc201","state_effective_at":"2026-08-29T08:00:00Z","tenant_id":"course","connector_id":"repo_corpus","external_source_id":"cook/soup/tomato.md","source_uri":"repo://corpus/cook/soup/tomato.md","display_name":"番茄蛋汤","media_type":"text/markdown","byte_size":1842,"content_sha256":"9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","blob_uri":"blob://sha256/9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","source_metadata":{"category":"汤品"},"lifecycle_state":"active"}
@@ -818,7 +820,7 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 
 ### 10.3 Dataset 演进
 
-- 数据集目录按不可变 SemVer 发布；任何 query、ground truth、label、split、source version 变化至少提升 dataset patch/minor，并重算 manifest checksum。
+- 数据集目录按不可变 SemVer 发布；任何 query、ground truth、label、split、`source_version_id`、`source_state_id` 或 lifecycle/source metadata 变化至少提升 dataset patch/minor，并重算 manifest checksum；不得原地修改已发布版本目录。
 - 会改变评测结论的标注规则或 split 变化提升 major/minor，不做原地 patch。
 - corpus version、chunk profile 与 retrieval label 必须相容；不相容直接 `EVALUATION_LABEL_STALE`，不能按正文模糊匹配补救。
 - 至少保留“当前 + 上一个”schema major 的读取 adapter；迁移工具输出新数据集，不覆盖旧目录。
@@ -830,6 +832,7 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 3. 缺必填字段、未知 major、未知关键 enum -> 明确拒绝。
 4. JSONL 中一个坏行 -> 报行号/item problem；其他行按调用方 partial policy 处理。
 5. ID golden tests：固定输入/profile 永远得到同 ID；修改任一哈希输入必得不同 ID。
+6. 生命周期状态选择：固定 `active -> tombstoned -> restored(active)` 事件序列，断言每一步都先按 `source_document_id` 选择最新快照再判断状态；tombstoned 阶段不得返回旧 active，restored 阶段复用原 `source_version_id` 但使用新 `source_state_id`。
 
 ## 11. “术语 -> 代码 -> 对象 -> 指标 -> 故障”映射
 
