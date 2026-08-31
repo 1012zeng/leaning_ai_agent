@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "scenarios": {
+    "semantic_break": {"window_chars": 18},
+    "dimension_mismatch": {"index_dimension": 48, "embedding_dimension": 24},
+    "filter_false_negative": {"filters": {"field": "category", "operator": "eq", "value": "不存在"}},
+    "no_hits": {"query": "zzz-no-token-match-999"},
+    "rerank_degradation": {"inject_timeout": true},
+    "context_overflow": {"token_budget": 1}
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0.0",
+  "tenant_id": "course",
+  "connector_id": "rag_labs",
+  "state_effective_at": "2026-08-31T00:00:00Z",
+  "corpus_dir": "data/corpus",
+  "output_dir": "results",
+  "parser": {
+    "profile_id": "parser.markdown",
+    "profile_version": "1.0.0",
+    "strict_utf8": true
+  },
+  "chunk": {
+    "profile_id": "chunk.markdown_structural",
+    "profile_version": "1.0.0",
+    "max_tokens": 90,
+    "overlap_tokens": 12
+  },
+  "embedding": {
+    "profile_id": "embed.hashing_zh",
+    "profile_version": "1.0.0",
+    "dimension": 48,
+    "normalized": true
+  },
+  "index": {
+    "profile_id": "index.memory.cosine",
+    "profile_version": "1.0.0",
+    "index_id": "idx_rag_labs_offline_1",
+    "corpus_version": "corpus-labs-1.0.0",
+    "filterable_fields": ["category", "difficulty"]
+  },
+  "retrieval": {
+    "profile_id": "retrieve.hybrid_channels",
+    "profile_version": "1.0.0",
+    "top_k_per_channel": 6,
+    "min_dense_score": 0.05
+  },
+  "rerank": {
+    "profile_id": "rerank.rrf_lexical",
+    "profile_version": "1.0.0",
+    "rrf_k": 60,
+    "lexical_weight": 0.35,
+    "min_context_score": 0.01,
+    "timeout_ms": 200,
+    "allow_fallback": true,
+    "limit": 5
+  },
+  "context": {
+    "profile_id": "context.top_hits",
+    "profile_version": "1.0.0",
+    "token_budget": 180
+  },
+  "generator": {
+    "profile_id": "generate.extractive_grounded",
+    "profile_version": "1.0.0",
+    "max_claim_chars": 120
+  },
+  "query": {
+    "query_id": "0198f8d7-2f69-7aa1-bb32-77ea087b2c41",
+    "answer_id": "0198f8dc-4b25-7d5e-a54b-bb6815b2e981",
+    "text": "番茄蛋汤需要哪些原料，制作步骤是什么？",
+    "locale": "zh-CN",
+    "filters": {},
+    "top_k": 10
+  },
+  "resilience": {
+    "max_attempts": 3,
+    "timeout_ms": 1000,
+    "base_delay_ms": 5
+  }
+}

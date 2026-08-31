@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools==75.8.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observable-rag-lab"
+version = "1.0.0"
+description = "Deterministic, offline, observable RAG teaching pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "black==25.1.0",
+    "mypy==1.15.0",
+    "pytest==8.3.5",
+    "pytest-cov==6.0.0",
+    "ruff==0.11.0",
+]
+
+[project.scripts]
+rag-lab = "rag_lab.cli:main"
+
+[tool.setuptools]
+packages = ["rag_lab"]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--cov=rag_lab",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["rag_lab"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff.lint]
+select = ["B", "C4", "E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["pytest", "pytest.*"]
+follow_imports = "skip"
