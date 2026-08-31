@@ -198,7 +198,7 @@
 
 | 名词 | 绑定的真实代码位置 | 绑定的数据对象/字段 |
 |---|---|---|
-| 参考仓库 Document / 目标 Chunk | `data_preparation.py` 的 `Document(page_content, metadata)` 仅作为待适配输入；跨模块使用 MUJI-19 的独立 `Chunk` DTO | `source_document_id`、`source_version_id`、`chunk_id`、可选 `parent_chunk_id`、`char_span`、`token_count`、`chunk_profile` |
+| 参考仓库 Document / 目标 Chunk | `data_preparation.py` 的 `Document(page_content, metadata)` 仅作为待适配输入；跨模块使用 MUJI-19 的独立 `Chunk` DTO | `source_document_id`、`source_version_id`、`chunk_id`、可选 `parent_chunk_id`、`document_char_span`、`token_count`、`chunk_profile` |
 | Embedding | `index_construction.py` BGE 调用 | `dense_vector` 维度、`ef.dim['dense']` |
 | Index | Milvus `Collection` + FAISS `VectorStoreIndex` | `SPARSE_INVERTED_INDEX`, `AUTOINDEX`, `metric_type="IP"` |
 | Query / Route | `generation_integration.py` `query_router` | `list` / `detail` / `general` |
@@ -616,11 +616,11 @@
 
 | 术语 | 定义（代码级） |
 |---|---|
-| Chunk | MUJI-19 定义的独立、不可变 DTO；必含 `chunk_id`/`source_document_id`/`source_version_id`/`char_span`，`parent_chunk_id` 仅在层级分块时出现；LangChain `Document` 只能停留在 adapter 内 |
+| Chunk | MUJI-19 定义的独立、不可变 DTO；必含 `chunk_id`/`source_document_id`/`source_version_id`/`document_char_span`，`parent_chunk_id` 仅在层级分块时出现；LangChain `Document` 只能停留在 adapter 内 |
 | EmbeddingRecord | `embedding_id` 将 `chunk_id` 与 `embedding_profile` 绑定；`dimension` 必须等于向量长度和目标 IndexManifest 的 dimension，不能把某个 BGE 型号的维度写死为通用事实 |
 | IndexManifest | 不可变索引构建清单，固定 `index_id`、corpus/profile、dimension、distance metric、coverage、checksum 与发布状态；Milvus/FAISS 对象只存在于 adapter 内 |
 | RankedHit | 融合/重排后的不可变命中对象，含 `ranked_hit_id`、`candidate_ids`、`final_score`、`score_components`、`rerank_profile` 与 `eligible_for_context` |
-| Citation | 事实 claim 到冻结 chunk 的可校验引用，至少绑定 `citation_id`、`claim_id`、`chunk_id`、`source_version_id`、quote 与 char span |
+| Citation | 事实 claim 到冻结 chunk 的可校验引用，至少绑定 `citation_id`、`claim_ids[]`、`chunk_id`、`source_version_id`、`quote` 与 `chunk_char_span` |
 | Rerank | 对检索结果二次排序，常用 RRF 融合或交叉编码器 |
 | Route | 按查询类型（list/detail/general）分发到不同检索/生成策略 |
 | 父子分块 | 小块检索（精确）+ 大块生成（完整上下文）；仅此 profile 的子 Chunk 使用可选 `parent_chunk_id` 关联父 Chunk |
