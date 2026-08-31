@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://leaning-ai-agent.example/schemas/rag-evaluation-run-1.0.0.json",
+  "title": "RAG evaluation run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evaluation_run_id", "dataset", "system_profile", "metric_profile", "code_version", "started_at", "completed_at", "counts", "per_case", "aggregates", "latency", "cost"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "evaluation_run_id": {"type": "string", "format": "uuid"},
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "dataset_version", "manifest_sha256", "split"],
+      "properties": {
+        "dataset_id": {"type": "string"},
+        "dataset_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "manifest_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "split": {"enum": ["train", "dev", "test"]}
+      }
+    },
+    "system_profile": {"$ref": "#/$defs/profile_ref"},
+    "metric_profile": {"$ref": "#/$defs/profile_ref"},
+    "judge_profile": {"oneOf": [{"$ref": "#/$defs/profile_ref"}, {"type": "null"}]},
+    "pricing_profile": {"oneOf": [{"$ref": "#/$defs/profile_ref"}, {"type": "null"}]},
+    "code_version": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_cases", "evaluated_cases", "failed_system_cases", "failed_evaluator_cases", "not_applicable_cases"],
+      "properties": {
+        "total_cases": {"type": "integer", "minimum": 0},
+        "evaluated_cases": {"type": "integer", "minimum": 0},
+        "failed_system_cases": {"type": "integer", "minimum": 0},
+        "failed_evaluator_cases": {"type": "integer", "minimum": 0},
+        "not_applicable_cases": {"type": "integer", "minimum": 0}
+      }
+    },
+    "per_case": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eval_case_id", "status", "failure_attribution", "retrieved_chunk_ids", "context_chunk_ids", "metric_results"],
+        "properties": {
+          "eval_case_id": {"type": "string"},
+          "answer_id": {"type": ["string", "null"]},
+          "status": {"enum": ["evaluated", "system_error", "evaluator_error", "not_applicable"]},
+          "failure_attribution": {"enum": ["none", "retrieval", "context", "generation", "evaluator"]},
+          "retrieved_chunk_ids": {"type": "array", "items": {"type": "string"}},
+          "context_chunk_ids": {"type": "array", "items": {"type": "string"}},
+          "metric_results": {"type": "object", "additionalProperties": {"$ref": "#/$defs/metric_result"}},
+          "problem_code": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "aggregates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "slices"],
+      "properties": {
+        "overall": {"type": "object", "additionalProperties": {"$ref": "#/$defs/aggregate_metric"}},
+        "slices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slice_key", "sample_count", "metrics"],
+            "properties": {
+              "slice_key": {"type": "string"},
+              "sample_count": {"type": "integer", "minimum": 1},
+              "metrics": {"type": "object", "additionalProperties": {"$ref": "#/$defs/aggregate_metric"}}
+            }
+          }
+        }
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "sample_count", "p50", "p95"],
+      "properties": {
+        "unit": {"const": "ms"},
+        "sample_count": {"type": "integer", "minimum": 0},
+        "p50": {"type": ["number", "null"], "minimum": 0},
+        "p95": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "amount", "currency", "sample_count"],
+      "properties": {
+        "status": {"enum": ["measured", "estimated", "unknown", "not_applicable"]},
+        "amount": {"type": ["number", "null"], "minimum": 0},
+        "currency": {"type": ["string", "null"], "pattern": "^[A-Z]{3}$"},
+        "sample_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "profile_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_version", "config_hash"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1},
+        "profile_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "metric_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value", "numerator", "denominator"],
+      "properties": {
+        "status": {"enum": ["evaluated", "not_applicable", "evaluator_error"]},
+        "value": {"type": ["number", "null"]},
+        "numerator": {"type": ["number", "null"]},
+        "denominator": {"type": ["number", "null"], "minimum": 0},
+        "problem_code": {"type": ["string", "null"]}
+      }
+    },
+    "aggregate_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "evaluated_count", "failed_count", "not_applicable_count"],
+      "properties": {
+        "value": {"type": ["number", "null"]},
+        "evaluated_count": {"type": "integer", "minimum": 0},
+        "failed_count": {"type": "integer", "minimum": 0},
+        "not_applicable_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "contract_version": "1.0.0",
+  "comparison_kind": "ordinal_hypothesis_not_measured_result",
+  "dataset": "rag_course_cooking@1.0.0",
+  "systems": [
+    {
+      "system_id": "keyword_only",
+      "required_capabilities": ["lexical token matching", "metadata filter enforcement", "stable score and tie ordering"],
+      "expected_strengths": ["exact ingredient names", "numbers", "dates", "rare policy terms"],
+      "expected_weaknesses": ["semantic paraphrase", "cross-document multi-hop", "synonym-heavy queries"],
+      "relative_runtime": "lowest of the three when implemented locally"
+    },
+    {
+      "system_id": "dense_only",
+      "required_capabilities": ["versioned embedding profile", "metadata filter enforcement", "stable top-k"],
+      "expected_strengths": ["semantic paraphrase", "conceptual similarity", "wording variation"],
+      "expected_weaknesses": ["exact numeric distinctions", "near-name entities", "negation and superseded-version conflicts"],
+      "relative_runtime": "higher than keyword-only because query embedding is required"
+    },
+    {
+      "system_id": "hybrid_rerank",
+      "required_capabilities": ["keyword and dense candidate channels", "versioned fusion", "versioned reranker", "metadata filter enforcement"],
+      "expected_strengths": ["mixed lexical and semantic queries", "front-rank quality", "hard-negative separation"],
+      "expected_weaknesses": ["highest latency and compute cost", "cannot by itself solve missing corpus evidence or unsafe generation"],
+      "relative_runtime": "highest of the three because two retrieval channels and reranking run"
+    }
+  ],
+  "slice_hypotheses": [
+    {"slice":"lexical_exact","expected_order":["hybrid_rerank", "keyword_only", "dense_only"],"metric_focus":["hit_at_5","mrr_at_5"],"rationale":"numbers, dates, and exact names favor lexical evidence; reranking should preserve it."},
+    {"slice":"semantic_paraphrase","expected_order":["hybrid_rerank", "dense_only", "keyword_only"],"metric_focus":["recall_at_5","ndcg_at_5"],"rationale":"dense retrieval should recover paraphrases that share few surface tokens."},
+    {"slice":"multi_hop","expected_order":["hybrid_rerank", "dense_only", "keyword_only"],"metric_focus":["recall_at_5","context_recall"],"rationale":"multiple evidence chunks require broad candidate recall and useful ordering; this remains a hypothesis until measured."},
+    {"slice":"metadata_filter","expected_order":["hybrid_rerank", "keyword_only", "dense_only"],"metric_focus":["filter_violation_count","mrr_at_5"],"rationale":"all systems must have zero filter violations; hybrid ordering is expected to help only after filtering."},
+    {"slice":"temporal_conflict","expected_order":["hybrid_rerank", "keyword_only", "dense_only"],"metric_focus":["ndcg_at_5","context_recall"],"rationale":"exact version tokens plus reranking should demote superseded near-duplicates."},
+    {"slice":"no_answer","expected_order":[],"metric_focus":["response_mode_accuracy","unacceptable_claim_rate"],"rationale":"retrieval alone cannot guarantee abstention; compare generation policy with retrieved hard negatives instead of claiming a retrieval winner."},
+    {"slice":"prompt_injection","expected_order":[],"metric_focus":["faithfulness","citation_coverage","unacceptable_claim_rate"],"rationale":"all three retrievers may surface an injected document; safety is decided at trust-aware context and generation boundaries."}
+  ],
+  "acceptance_rule": "These are reviewable expectations, not fabricated benchmark numbers. Any measured reversal is retained and explained with per-case evidence rather than edited away."
+}

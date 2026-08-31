@@ -1,0 +1,174 @@
+{
+  "contract_version": "1.0.0",
+  "profile_id": "metric.rag_course_layered",
+  "profile_version": "1.0.0",
+  "relevance_threshold": 1,
+  "graded_gain": "2^relevance_grade-1",
+  "k_values": [1, 3, 5, 10],
+  "required_run_identity": [
+    "dataset_id",
+    "dataset_version",
+    "manifest_sha256",
+    "split",
+    "system_profile",
+    "metric_profile",
+    "code_version"
+  ],
+  "metrics": [
+    {
+      "metric_id": "hit_at_k",
+      "layer": "retrieval",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["ordered_retrieved_chunk_ids", "retrieval_labels.relevance_grade"],
+      "formula": "1 if any top-k chunk has relevance_grade >= 1, else 0",
+      "applicability": "cases with at least one positive retrieval label",
+      "empty_semantics": "not_applicable when no positive label exists; an empty returned list scores 0 otherwise",
+      "aggregation": "macro mean over evaluated applicable cases"
+    },
+    {
+      "metric_id": "recall_at_k",
+      "layer": "retrieval",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["ordered_retrieved_chunk_ids", "retrieval_labels.relevance_grade"],
+      "formula": "count(distinct positive labeled chunks present in top-k) / count(distinct positive labeled chunks)",
+      "applicability": "cases with at least one positive retrieval label",
+      "empty_semantics": "not_applicable when denominator is 0; never coerce to 0 or 1",
+      "aggregation": "report macro mean and micro numerator/denominator separately"
+    },
+    {
+      "metric_id": "mrr_at_k",
+      "layer": "ranking",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["ordered_retrieved_chunk_ids", "retrieval_labels.relevance_grade"],
+      "formula": "1/rank of the first top-k chunk with relevance_grade >= 1; 0 when none",
+      "applicability": "cases with at least one positive retrieval label",
+      "empty_semantics": "not_applicable when no positive label exists",
+      "aggregation": "macro mean over evaluated applicable cases"
+    },
+    {
+      "metric_id": "ndcg_at_k",
+      "layer": "ranking",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["ordered_retrieved_chunk_ids", "retrieval_labels.relevance_grade"],
+      "formula": "DCG/IDCG where DCG=sum((2^grade-1)/log2(rank+1)) and IDCG uses positive labels sorted by grade descending",
+      "applicability": "cases with IDCG > 0",
+      "empty_semantics": "not_applicable when IDCG is 0",
+      "aggregation": "macro mean over evaluated applicable cases"
+    },
+    {
+      "metric_id": "context_recall",
+      "layer": "context",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["selected_context_chunk_ids", "retrieval_labels.supports_claim_keys", "ground_truth.required_claims"],
+      "formula": "count(required claim keys supported by at least one selected context chunk) / count(required claim keys)",
+      "applicability": "answer-mode cases with at least one required claim",
+      "empty_semantics": "not_applicable for abstain or clarify cases",
+      "aggregation": "macro mean plus evaluated/not-applicable counts"
+    },
+    {
+      "metric_id": "context_precision",
+      "layer": "context",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["distinct_selected_context_chunk_ids", "retrieval_labels.relevance_grade"],
+      "formula": "count(distinct selected chunks with relevance_grade >= 1) / count(distinct selected chunks)",
+      "applicability": "cases with at least one selected context chunk",
+      "empty_semantics": "not_applicable for empty context; report empty-context count separately",
+      "aggregation": "macro mean over evaluated applicable cases"
+    },
+    {
+      "metric_id": "required_claim_coverage",
+      "layer": "generation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["answer_claim_labels", "ground_truth.required_claims"],
+      "formula": "count(required claim keys correctly expressed by the answer) / count(required claim keys)",
+      "applicability": "answer-mode cases with at least one required claim",
+      "empty_semantics": "not_applicable for abstain or clarify cases",
+      "aggregation": "macro mean plus per-case numerator and denominator"
+    },
+    {
+      "metric_id": "citation_coverage",
+      "layer": "citation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["answer.factual_claims", "answer.citations", "citation_validation"],
+      "formula": "count(factual answer claims with at least one valid supporting citation) / count(factual answer claims)",
+      "applicability": "answers containing at least one factual claim",
+      "empty_semantics": "not_applicable when the answer has no factual claims; an abstention is not automatically 1",
+      "aggregation": "micro numerator/denominator and macro mean; report invalid citation count"
+    },
+    {
+      "metric_id": "faithfulness",
+      "layer": "generation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["answer.factual_claims", "selected_context", "validated_citations", "judge_profile"],
+      "formula": "count(factual answer claims supported by selected context) / count(factual answer claims), or an equivalent versioned independent-judge score",
+      "applicability": "answers containing factual claims",
+      "empty_semantics": "not_applicable when no factual claim exists; evaluator failure is evaluator_error, not 0",
+      "aggregation": "only within one immutable judge profile; report evaluated and failed counts"
+    },
+    {
+      "metric_id": "answer_relevance",
+      "layer": "generation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["query.text", "answer.text", "expected_response_mode", "judge_profile"],
+      "formula": "versioned human or independent-judge score for whether the response addresses the query; expected abstain/clarify behavior counts as addressing the query",
+      "applicability": "all completed answers",
+      "empty_semantics": "evaluator_error when the configured judge cannot score; never silently 0",
+      "aggregation": "only within one immutable judge profile; slice by expected response mode"
+    },
+    {
+      "metric_id": "response_mode_accuracy",
+      "layer": "generation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["ground_truth.expected_response_mode", "answer.outcome", "answer_mode_label"],
+      "formula": "1 when answer, abstain, or clarify behavior matches the expected response mode; else 0",
+      "applicability": "all completed answers",
+      "empty_semantics": "system_error when no answer object exists because the pipeline failed",
+      "aggregation": "macro mean and confusion matrix by expected mode"
+    },
+    {
+      "metric_id": "latency_ms",
+      "layer": "runtime",
+      "unit": "ms",
+      "range": [0, null],
+      "inputs": ["TraceEvent stage timestamps or duration_ms"],
+      "formula": "end-to-end completed_at minus started_at for one logical case; retries remain inside the same logical duration",
+      "applicability": "all attempted cases with a complete root span",
+      "empty_semantics": "missing trace is telemetry_error and excluded with an explicit failed count",
+      "aggregation": "nearest-rank p50 and p95 over successful numeric samples; rank=ceil(p*n)"
+    },
+    {
+      "metric_id": "cost",
+      "layer": "runtime",
+      "unit": "currency",
+      "range": [0, null],
+      "inputs": ["token or unit usage", "immutable pricing_profile", "currency"],
+      "formula": "sum(input_units*input_rate + output_units*output_rate + embedding_units*embedding_rate)",
+      "applicability": "runs with complete usage and pricing profile, or explicitly zero-cost local profiles",
+      "empty_semantics": "unknown usage or price yields status=unknown and amount=null, never zero",
+      "aggregation": "total amount and per-evaluated-case amount within one currency and pricing profile"
+    }
+  ],
+  "failure_attribution": [
+    {"first_failed_layer":"retrieval","rule":"required evidence is absent from top-k candidates"},
+    {"first_failed_layer":"context","rule":"retrieval found supporting chunks but selected context does not cover required claims or violates version/filter constraints"},
+    {"first_failed_layer":"generation","rule":"selected context supports required behavior but answer misses claims, makes unsupported claims, cites invalid evidence, follows injection, or uses the wrong response mode"},
+    {"first_failed_layer":"evaluator","rule":"the system produced evaluable artifacts but the metric or judge failed; do not score the system as zero"}
+  ],
+  "reporting_requirements": [
+    "report total, evaluated, system-error, evaluator-error, and not-applicable counts",
+    "report overall values with category, difficulty, diagnostic-stage, and expected-response-mode slices",
+    "do not compare scores across different dataset, system, metric, judge, or pricing profiles",
+    "do not use fixture generator or fixture judge output as a quality result"
+  ]
+}
