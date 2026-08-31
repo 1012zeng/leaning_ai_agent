@@ -6,7 +6,7 @@
 
 | 活动 | 本章任务 | 证据 |
 |---|---|---|
-| 读代码 | 从 lab01 CLI 入口追到每个 port | 调用链标注，至少写出 7 个函数/类和 I/O 类型 |
+| 读代码 | 从 `rag_lab/cli.py` 的 `main()` 追到每个 port | 调用链标注，至少写出 7 个函数/类和 I/O 类型 |
 | 改代码 | 改 `top_k` 或上下文阈值，不改领域对象字段 | 新 profile identity、测试结果和差异报告 |
 | 设计实验 | 比较“仅关键词”和“确定性向量”基线 | 固定数据与指标的对照表 |
 | 解释结果 | 对一个错误答案定位首个异常中间状态 | 假设、证据、结论和排除项 |
@@ -25,7 +25,7 @@ RAG 是“先从一个可追溯知识源取得证据，再让生成器基于证�
 |---|---|---|---|
 | ingestion | bytes -> `SourceDocument`/`ParsedDocument`/`Chunk` | source/version/chunk ID、span、profile | 同输入和 profile 可重建同一派生 ID |
 | indexing | `Chunk` -> `EmbeddingRecord`/`IndexManifest` | dimension、metric、coverage、state | 向量维度与 manifest 一致；只有 ready 索引可发布 |
-| retrieval | `RetrievalQuery` -> `Candidate[]` | channel、raw score、score semantics、rank | 不同 score kind 的原始分数不可直接比较 |
+| retrieval | `RetrievalQuery` -> `Candidate[]` | channel、source document/version ID、raw score、score semantics、rank | 不同 score kind 的原始分数不可直接比较；Candidate 直接携带来源链 |
 | rerank/context | `Candidate[]` -> `RankedHit[]` -> `ContextBundle` | candidate IDs、final score、eligible、token budget | 不合格 hit 不进上下文；不得静默截断 chunk |
 | generation | `ContextBundle` -> `Answer`/`Citation[]` | outcome、claim span、citation IDs、finish reason | 事实性 claim 必须有可校验引用 |
 | observability | stage event -> `TraceEvent` | trace/span、stage、status、refs、metrics | 只记录 ID/计数/哈希，不复制正文和密钥 |
@@ -34,7 +34,7 @@ RAG 是“先从一个可追溯知识源取得证据，再让生成器基于证�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 [labs/lab01](../../labs/README.md) 的离线 baseline。先找 CLI 入口，再按 port 顺序阅读，不从 adapter 反向猜领域语义。
+运行离线 baseline：`python -m rag_lab demo --config configs/offline.json --stdout`。先找 CLI 入口（`rag_lab/cli.py`），再按 port 顺序阅读，不从 adapter 反向猜领域语义。
 
 关键阅读点：
 
@@ -68,7 +68,7 @@ CLI
 
 ### 5. 可复现失败：检索无命中
 
-向 lab01 提交评测集中明确无答案的问题，或把元数据过滤条件改成不存在的分类。
+用 `python -m rag_lab demo --query-text "🙂"` 提交一个无命中问题，或把元数据过滤条件改成不存在的分类（修改 `configs/offline.json` 的 `query.filters`）。
 
 正确语义：retrieval 返回 success + `candidates=[]`；context 返回空 bundle 和 `NO_ELIGIBLE_HITS` warning；generation 返回 `outcome=insufficient_evidence`。错误实现会返回 500、编造答案，或在 trace 中丢掉空结果阶段。
 
@@ -94,7 +94,7 @@ baseline 至少记录：ingestion 创建/隔离数量、index coverage、Recall@
 
 任务：把 `top_k` 从基线值改为两组参数，其他条件不变。记录 Candidate、RankedHit、ContextBundle 和 Answer 的变化，并解释 Recall@5、上下文 token 数和延迟之间的关系。
 
-验收：运行 lab01 指定命令和 `pytest -k lab01`；预期测试通过，每组结果具有不同 profile/config hash；对象链不断裂；报告没有把 raw distance 当 relevance score。
+验收：运行 `python -m rag_lab demo` 和 `pytest`；预期测试通过，每组结果具有不同 profile/config hash；对象链不断裂；报告没有把 raw distance 当 relevance score。
 
 参考答案要点：增大 `top_k` 只保证候选更多，不保证最终答案更好；召回可能上升，但 rerank/上下文成本通常上升，噪声也可能增加。合理结论应基于固定评测集的曲线或表格，而不是选一个“看起来不错”的问题。若分数没有变化，先检查参数是否真正进入 profile 和检索调用。
 
@@ -110,7 +110,7 @@ baseline 至少记录：ingestion 创建/隔离数量、index coverage、Recall@
 
 ### 3. 最小可运行代码与阅读点
 
-在 lab01 测试中找一个正常用例和一个空文档用例，对比 `StageResult`，确认错误由稳定 `problem.code` 表达，`detail` 只用于阅读。
+在 `tests/test_pipeline.py` 中找一个正常用例和一个空文档用例（`test_no_hits_propagate_to_abstention`），对比 `StageResult`，确认错误由稳定 `problem.code` 表达，`detail` 只用于阅读。
 
 ### 4. 调用链和中间状态
 

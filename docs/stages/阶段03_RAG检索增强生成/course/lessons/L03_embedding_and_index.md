@@ -27,7 +27,7 @@ Embedding 把 query 或 document 编码为固定维度的数值向量，使系�
 
 ### 3. 最小可运行代码与逐行关键点
 
-运行 [lab03 embedding](../../labs/README.md) 的 deterministic adapter 和可选真实 Sentence Transformers adapter。阅读顺序：profile 解析 -> document/query 编码入口 -> batch shape 校验 -> finite/normalize 检查 -> `EmbeddingRecord` ID -> index writer。
+运行 `python -m rag_lab demo` 走通确定性 hashing embedding 路径（`configs/offline.json` 的 `embed.hashing_zh` profile）。阅读顺序：profile 解析 -> document/query 编码入口 -> batch shape 校验 -> finite/normalize 检查 -> `EmbeddingRecord` ID -> index writer。
 
 官方 Sentence Transformers 文档区分 `encode_query` 与 `encode_document`，因为非对称检索模型可能使用不同 prompt/task。课程 adapter 必须显式体现这种差异，不能假定通用 `encode()` 永远等价，资料见 [官方核对表](../references.md)。
 
@@ -78,7 +78,7 @@ RetrievalQuery.normalized_text
 
 任务：在不改数据和检索算法的前提下，对比 deterministic baseline 与一个真实本地 embedding profile；记录 shape、norm、索引大小、Recall@5、MRR 和 p95。
 
-验收：运行 lab03 命令和 `pytest -k embedding`；预期两个 profile 产生不同 embedding/index ID，维度校验通过，报告列出失败 case 而不是只写平均分。
+验收：运行 `python -m rag_lab demo` 和 `pytest tests/test_index_retrieval_rerank.py -k embedding`；预期两个 profile 产生不同 embedding/index ID，维度校验通过，报告列出失败 case 而不是只写平均分。
 
 参考答案要点：真实模型不必在所有 query 上胜出；词面精确 ID、缩写和编号可能由稀疏检索更好。若质量变化但 profile/config hash 相同，实验不可审计；若 dimension 变化却复用 index，属于阻断错误。
 
@@ -96,7 +96,7 @@ RetrievalQuery.normalized_text
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab03 的 index build。阅读 staging 写入、逐项 `ItemResult`、manifest checksum、smoke retrieval、ready 转换和 alias compare-and-swap。确认“向量生成成功”和“索引写入成功”是两个不同状态。
+运行 `python -m rag_lab demo` 走通 index build。阅读 `indexing.py` 的 staging 写入、逐项 `ItemResult`、manifest checksum、ready 转换。确认“向量生成成功”和“索引写入成功”是两个不同状态。
 
 ### 4. 调用链与中间状态
 
@@ -146,7 +146,7 @@ FAISS 官方说明 Flat 能提供 exact 结果，IVF/HNSW 等索引用近似换�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab03 index benchmark。先建立 Flat baseline，再在同一向量集合和 query 集上运行可用的 IVF/HNSW profile；阅读构建阶段与查询阶段参数分别落在哪里。
+运行 `python -m rag_lab benchmark --iterations 30` 建立 latency baseline；阅读 `benchmark.py` 的构建阶段与查询阶段参数分别落在哪里。
 
 ### 4. 调用链和中间状态
 

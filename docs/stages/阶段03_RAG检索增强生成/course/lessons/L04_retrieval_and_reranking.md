@@ -27,7 +27,7 @@ CandidateSet 是一个 query/index 对应的 `Candidate[]`。Candidate 关键字
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab04 的 `sparse`、`dense`、`hybrid` profiles。阅读 query adapter、各通道 retriever、供应商 hit -> Candidate 映射，以及确定性 tie-break。确认 retrieval 阶段没有偷偷执行 RRF。
+运行 `python -m rag_lab demo --stdout` 观察 hybrid 通道的 `CandidateSet`（BM25 + dense 两路）。阅读 query adapter、各通道 retriever、hit -> Candidate 映射，以及确定性 tie-break。确认 retrieval 阶段没有偷偷执行 RRF。
 
 ### 4. 调用链和中间状态
 
@@ -63,7 +63,7 @@ RetrievalQuery(original + normalized + filters + index_id)
 
 ### 8. 学员任务、验收与参考答案
 
-任务：从评测集中挑出精确编号、同义问法、模糊问法三类 query，比较 sparse/dense/hybrid 的候选和指标。验收运行 `pytest -k "retrieval or candidate"`，报告保留每路 Candidate，不只列最终文本。
+任务：从评测集中挑出精确编号、同义问法、模糊问法三类 query，比较 sparse/dense/hybrid 的候选和指标。验收运行 `pytest tests/test_index_retrieval_rerank.py -k "retrieval or candidate"`，报告保留每路 Candidate，不只列最终文本。
 
 参考答案要点：精确编号通常让 sparse 受益，同义问法可能让 dense 受益，但结论必须由当前语料证明。hybrid 若未提升，先检查候选深度、分词、重复去重和标签，而不是立即调 RRF 常数。
 
@@ -81,7 +81,7 @@ RetrievalQuery(original + normalized + filters + index_id)
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab04 的 category filter、日期/版本冲突和 query rewrite 样例。阅读 filter schema 校验 -> 后端 adapter 翻译；rewrite 失败/回退 -> query object；确认供应商 SQL/expression 不穿过 port。
+用 `python -m rag_lab demo` 配合不同 `query.filters` 观察 category filter 行为；阅读 `retrieval.py` 的 filter schema 校验逻辑，确认过滤在检索层完成、供应商表达式不穿过 port。
 
 ### 4. 调用链和中间状态
 
@@ -119,7 +119,7 @@ caller query + authorized filters
 
 ### 8. 学员任务与参考答案
 
-任务：为“指定类别且只使用当前版本”的 query 增加 filter schema 和测试，再设计一个 rewrite 会删除关键约束的失败用例。验收 `pytest -k "filter or rewrite"`，预期非法字段在检索前失败，合法无匹配返回空结果，漂移用例可回退原 query。
+任务：为“指定类别且只使用当前版本”的 query 增加 filter schema 和测试，再设计一个 rewrite 会删除关键约束的失败用例。验收 `pytest tests/test_index_retrieval_rerank.py -k "filter"`，预期非法字段在检索前失败，合法无匹配返回空结果，漂移用例可回退原 query。
 
 参考答案要点：权限/租户 filter 不能降级为无过滤搜索；普通质量 filter 可以按产品策略提示用户修正。回退必须出现在 trace 中并标记 degraded，不能把改写失败隐藏成正常结果。
 
@@ -137,7 +137,7 @@ RRF 参数、cross-encoder model revision、阈值、fallback 策略都属于 re
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab04 的 RRF-only、RRF+reranker 和 timeout fallback。阅读 candidate grouping、RRF rank 公式、稳定排序、cross-encoder batch、阈值和 fallback。确认 RankedHit 不修改 Candidate 或 Chunk。
+用 `python -m rag_lab failures --scenario rerank_degradation` 触发 timeout fallback；阅读 `rerank.py` 的 candidate grouping、RRF rank 公式、阈值和 fallback。确认 RankedHit 不修改 Candidate 或 Chunk。
 
 ### 4. 调用链和中间状态
 
@@ -177,7 +177,7 @@ RRF 无需跨通道校准、快且可解释；cross-encoder 可能提升前排�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab04 context budget、重复父块和低置信度样例。阅读去重、父子提升、token 计算、单块超预算 warning、render anchor 与 deterministic order。
+用 `python -m rag_lab failures --scenario context_overflow` 观察 context budget 超预算 warning；阅读 `context.py` 的 token 计算、单块超预算 warning 与 deterministic order。
 
 ### 4. 调用链和中间状态
 

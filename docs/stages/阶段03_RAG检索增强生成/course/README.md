@@ -43,14 +43,14 @@
 
 ## 必修主线
 
-| 顺序 | 章节 | 主要对象 | 配套实验 | 通过证据 |
+| 顺序 | 章节 | 主要对象 | 真实入口 | 通过证据 |
 |---:|---|---|---|---|
-| 1 | [L01 可观测朴素 RAG](lessons/L01_observable_naive_rag.md) | 全链对象、`StageResult` | lab01 | 对象 ID 链、索引清单、trace、失败定位单 |
-| 2 | [L02 解析与分块](lessons/L02_parsing_and_chunking.md) | `SourceDocument`、`ParsedDocument`、`Chunk` | lab02 | 分块消融、span 校验、空文档/乱码恢复 |
-| 3 | [L03 Embedding 与索引](lessons/L03_embedding_and_index.md) | `EmbeddingRecord`、`IndexManifest` | lab03 | 维度/metric 校验、Flat/IVF/HNSW 对比 |
-| 4 | [L04 检索、重排与上下文](lessons/L04_retrieval_and_reranking.md) | `RetrievalQuery`、`Candidate`、`RankedHit`、`ContextBundle` | lab04 | 稀疏/稠密/混合对照、过滤、查询变换、Rerank 消融 |
-| 5 | [L05 引用、拒答与生成](lessons/L05_grounded_generation.md) | `Answer`、`Claim`、`Citation` | lab05 | span 校验、引用覆盖、拒答和 prompt injection 防护 |
-| 6 | [L06 离线评测与可观测性](lessons/L06_evaluation_and_observability.md) | `EvalCase`、`EvaluationReport`、`TraceEvent` | lab06 | 检索/生成分层指标、失败切片、成本/延迟报告 |
+| 1 | [L01 可观测朴素 RAG](lessons/L01_observable_naive_rag.md) | 全链对象、`StageResult` | `python -m rag_lab demo --stdout` | 对象 ID 链、索引清单、trace、失败定位单 |
+| 2 | [L02 解析与分块](lessons/L02_parsing_and_chunking.md) | `SourceDocument`、`ParsedDocument`、`Chunk` | `demo` + `failures --scenario empty_document,decode_error` | 分块消融、span 校验、空文档/乱码恢复 |
+| 3 | [L03 Embedding 与索引](lessons/L03_embedding_and_index.md) | `EmbeddingRecord`、`IndexManifest` | `demo` + `failures --scenario dimension_mismatch` | 维度/metric 校验、索引清单、覆盖率与 checksum |
+| 4 | [L04 检索、重排与上下文](lessons/L04_retrieval_and_reranking.md) | `RetrievalQuery`、`Candidate`、`RankedHit`、`ContextBundle` | `demo` + `failures --scenario no_hits,filter_false_negative` | 稀疏/稠密/混合对照、过滤、Rerank 消融 |
+| 5 | [L05 引用、拒答与生成](lessons/L05_grounded_generation.md) | `Answer`、`Claim`、`Citation` | `demo` + `failures --scenario context_overflow` | span 校验、引用覆盖、拒答和 prompt injection 防护 |
+| 6 | [L06 离线评测与可观测性](lessons/L06_evaluation_and_observability.md) | `EvalCase`、评测运行、`TraceEvent` | `python validate_dataset.py` + `benchmark` | 检索/生成分层指标、失败切片、成本/延迟报告 |
 
 每章都包含“读代码、改代码、设计实验、解释结果”四类活动，至少完成三类才算完成章节。
 
@@ -71,7 +71,15 @@ cd docs/stages/阶段03_RAG检索增强生成/labs
 .\.venv\Scripts\python -m ruff check .
 ```
 
-上述命令应产生零退出码；具体 lab 命令以 [实验 README](../labs/README.md) 为权威源。报告必须固定：`dataset_id@version`、`index_id`、profile identity、config hash、commit SHA、随机种子和运行模式。
+上述命令应产生零退出码；具体命令以 [实验 README](../labs/README.md) 为权威源。教学与评测的真实入口统一为 `rag-lab` 命令行：
+
+```powershell
+python -m rag_lab demo --config configs/offline.json --stdout
+python -m rag_lab failures --config configs/offline.json --scenario all
+python -m rag_lab benchmark --config configs/offline.json --iterations 30
+```
+
+报告必须固定：`dataset_id@version`、`index_id`、profile identity、config hash、commit SHA、随机种子和运行模式。
 
 ## 阶段产物
 

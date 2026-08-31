@@ -72,7 +72,7 @@
 
 ### 11. 读代码追对象（12 分）
 
-在 lab01 从 CLI 追踪一个 answerable case。提交调用链、每阶段输入输出类型、关键 IDs/shape、一个不变量和对应测试；从 Citation 反查 SourceDocument 精确版本。
+在 `rag-lab` 从 CLI（`python -m rag_lab demo --stdout`）追踪一个 answerable case。提交调用链、每阶段输入输出类型、关键 IDs/shape、一个不变量和对应测试；从 Citation 的 `source_document_id`/`source_version_id` 反查 SourceDocument 精确版本。
 
 评分：调用链 3，对象/shape 3，ID 反查 3，不变量/测试 2，表达 1。漏掉 source version 或只画框架 chain，最高 6 分。
 

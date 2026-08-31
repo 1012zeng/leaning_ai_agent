@@ -27,7 +27,7 @@ Prompt 是 generator profile 的一部分，不是安全边界本身。可靠性
 
 ### 3. 最小可运行代码与逐行阅读点
 
-运行 [lab05 grounded generation](../../labs/README.md) 的正常回答、无答案、低置信度和结构错误样例。阅读顺序：ContextBundle resolver -> prompt renderer -> model adapter -> structured claims parser -> citation candidate builder -> validator -> Answer publish。
+运行 `python -m rag_lab demo --stdout` 观察正常回答与引用；再用 `python -m rag_lab failures --scenario no_hits,context_overflow` 触发拒答路径。阅读顺序：ContextBundle resolver -> extractive generator -> claim/citation builder -> validator -> Answer publish。
 
 重点确认模型输出不会直接成为 Answer；只有 schema、claim span、citation span、source version 和 context membership 全部通过，才能发布。
 
@@ -70,7 +70,7 @@ GenerationCommand
 
 ### 8. 学员任务、验收与参考答案
 
-任务：新增“模型答案正确但 ContextBundle 不含证据”的用例，并修改 generator profile 使它拒答。验收运行 `pytest -k "generation or abstain"`，预期不调用或停止模型的策略可由 profile 决定，但最终 outcome 必须是 insufficient evidence，citation 列表为空。
+任务：新增“模型答案正确但 ContextBundle 不含证据”的用例，并修改 generator profile 使它拒答。验收运行 `pytest tests/test_pipeline.py -k "abstain or generation"`，预期不调用或停止模型的策略可由 profile 决定，但最终 outcome 必须是 insufficient evidence，citation 列表为空。
 
 参考答案要点：不能因为 reference answer 与模型文本一致就发布；系统契约判断的是证据链。修复若只在 prompt 加一句“不要幻觉”却不做 preflight/validator，证据不足用例仍不可靠。
 
@@ -88,7 +88,7 @@ Citation 关键字段：citation/answer IDs、claim IDs、ranked hit/chunk/sourc
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab05 citation 正常、span 偏移和版本漂移测试。阅读 anchor 解析、code-point span、quote hash、context membership、source locator 展示字段和原子发布边界。
+运行 `python -m rag_lab demo --stdout` 观察 citation 的 code-point span、quote hash、source locator；阅读 `generation.py` 的引用校验与原子发布边界。
 
 ### 4. 调用链和中间状态
 
@@ -110,7 +110,7 @@ structured draft claim -> answer text span validation -> requested source anchor
 
 ### 8. 学员任务与参考答案
 
-任务：增加一个事实 claim 由两个不同来源共同支持的样例，再增加一条装饰性但不支持 claim 的引用。验收 `pytest -k citation`，预期有效引用都映射到 selected hits，装饰性引用不能让 completeness/correctness 通过。
+任务：增加一个事实 claim 由两个不同来源共同支持的样例，再增加一条装饰性但不支持 claim 的引用。验收 `pytest tests/test_pipeline.py -k citation`，预期有效引用都映射到 selected hits，装饰性引用不能让 completeness/correctness 通过。
 
 参考答案要点：citation count 多不代表质量高；应该分别衡量 claim coverage 和语义支持。去重只能合并相同证据关系，不能丢失 source version 或 claim IDs。
 
@@ -126,7 +126,7 @@ ContextBundle 只提供带 source anchors 的 evidence；system policy、用户�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 evals 中的 prompt injection 文档和 lab05 防护测试。阅读 context renderer 是否把 evidence 当指令拼到 system message；generator 是否拥有工具/网络权限；输出 validator 是否允许模型回显敏感配置。
+阅读 `evals/` 中 `untrusted_recipe_note.md` 的 prompt injection 文档；在 `demo` 流程中观察防护行为。确认生成器不把 evidence 当指令拼接、不拥有工具/网络权限、输出 validator 不允许模型回显敏感配置。
 
 ### 4. 调用链和中间状态
 

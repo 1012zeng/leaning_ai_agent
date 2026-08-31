@@ -27,7 +27,7 @@ EvalCase 关键字段：case/dataset IDs、dataset version、stable case key、t
 
 ### 3. 最小可运行代码与阅读点
 
-运行 [evals 校验入口](../../evals/README.md) 和 [lab06](../../labs/README.md)。先读 manifest loader 和 schema，再读 join 规则、stale label 检查、split guard、case runner 与 aggregate denominator。
+运行评测数据校验：`python validate_dataset.py`（在 `evals/` 目录下），再跑 `python -m rag_lab benchmark` 观察端到端延迟与成本占位。先读 manifest loader 和 schema，再读 join 规则、stale label 检查、split guard、case runner 与 aggregate denominator。
 
 ### 4. 调用链和中间状态
 
@@ -85,7 +85,7 @@ Ragas 等工具只作为 metric adapter；课程 metric profile 固定准确名�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab06 非 LLM retrieval metrics，再运行 fixture 契约模式和真实模型质量模式。阅读每个 metric 的输入字段、失败处理、per-case result 和 aggregate denominator；确认 evaluator 失败没有静默当 0。
+运行 `python validate_dataset.py` 校验评测数据集契约；阅读 `evals/metrics/metric_contract.json` 中每个 metric 的输入字段、失败处理、per-case result 和 aggregate denominator；确认 evaluator 失败没有静默当 0。
 
 ### 4. 调用链和中间状态
 
@@ -109,7 +109,7 @@ LLM judge 超时若被记为 0 分会混淆系统质量和评估器可用性；�
 
 任务：比较 keyword-only、dense-only、hybrid+rerank 三个 profile，至少按 exact-term、semantic、filter、no-answer 四个 slice 报告 Recall@5、MRR、faithfulness、citation completeness、p95 和成本。
 
-验收：lab06 契约模式和 `pytest -k evaluation` 通过；质量模式拒绝 fixture generator/judge；报告列出 total/evaluated/failed cases 和 profiles。
+验收：`python validate_dataset.py` 通过；`pytest tests/` 全量通过；报告列出 total/evaluated/failed cases 和 profiles。
 
 参考答案要点：hybrid+rerank 的预期是提高混合 query 分布的前排质量，不保证每个切片都胜出。若检索提升而 faithfulness 下降，检查 ContextBundle 噪声、预算和 generator；若引用完整但 correctness 低，可能引用真实却不支持 claim。
 
@@ -127,7 +127,7 @@ LLM judge 超时若被记为 0 分会混淆系统质量和评估器可用性；�
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab06 正常、retry、fallback 和 failed case，使用 trace viewer/JSONL。阅读 span 创建、parent 传播、event sink failure 缓冲、字段白名单和日志脱敏测试。
+运行 `python -m rag_lab demo` 后阅读生成的 `results/trace.jsonL`；用 `python -m rag_lab failures --scenario rerank_degradation` 观察 fallback trace。阅读 `observability.py` 的 span 创建、parent 传播、字段白名单和日志脱敏。
 
 ### 4. 调用链和中间状态
 

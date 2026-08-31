@@ -28,7 +28,7 @@
 
 ### 3. 最小可运行代码与逐行阅读点
 
-运行 [lab02 ingestion](../../labs/README.md) 的正常 Markdown、空文件和非法 UTF-8 样例。阅读时逐行确认：bytes 在何处哈希；charset 策略从哪个 profile 注入；换行规范化何时发生；element span 依据规范化前还是后文本；错误如何映射为 item-level `ProblemDetails`。
+运行 ingestion 样例：`python -m rag_lab demo` 走通正常语料，再用 `python -m rag_lab failures --scenario empty_document,decode_error` 触发空文件与乱码路径。阅读时逐行确认：bytes 在何处哈希；charset 策略从哪个 profile 注入；换行规范化何时发生；element span 依据规范化前还是后文本；错误如何映射为 item-level `ProblemDetails`。
 
 不要在 lesson 中重写 parser。完整实现和测试只在 `labs/`。
 
@@ -67,7 +67,7 @@ connector discovers item
 
 ### 8. 学员修改任务、验收与答案
 
-任务：给 parser 增加一个“出现替换字符即 quarantine”的 profile，同时保留已有 lenient 行为。验收运行 `pytest -k "decode or parser"`，预期 strict、lenient、新 profile 三组行为各自稳定，profile/config hash 不同。
+任务：给 parser 增加一个“出现替换字符即 quarantine”的 profile，同时保留已有 lenient 行为。验收运行 `pytest tests/test_ingestion_models_config.py -k "decode or ingestion"`，预期 strict、lenient、新 profile 三组行为各自稳定，profile/config hash 不同。
 
 参考答案要点：策略属于 profile 而不是硬编码 if；同一 bytes 在不同 parser profile 下产生不同 ParsedDocument ID；SourceDocument 的内容版本不变；新策略必须有明确 warning/problem code 和回归测试。
 
@@ -85,7 +85,7 @@ connector discovers item
 
 ### 3. 最小可运行代码与阅读点
 
-运行 lab02 四组分块 profile。读 chunker 的边界选择、overlap、token 计算、标题前缀注入和 ID 编码；随后读 span property test，确认没有用数组下标或随机 UUID 当稳定身份。
+用 `python -m rag_lab demo` 跑通默认结构分块，再切换 `configs/offline.json` 的 `chunk` profile 观察边界变化。读 chunker 的边界选择、overlap、token 计算和 ID 编码；随后读 `tests/test_ingestion_models_config.py` 的 span property test，确认没有用数组下标或随机 UUID 当稳定身份。
 
 ### 4. 调用链和中间状态
 
@@ -127,7 +127,7 @@ ParsedDocument.text + elements + chunk profile
 
 任务：对同一语料运行 3 个 chunk profile，每组列出对象数量、token 分布、Recall@5、MRR、引用 span 通过率和索引大小；挑出两个失败题例解释根因。
 
-验收：`pytest -k "chunk or span"` 通过；报告仅改变 chunk profile；每组结果携带新 profile identity 和 index ID；不复用过期 labels。
+验收：`pytest tests/test_ingestion_models_config.py -k "chunk or span"` 通过；报告仅改变 chunk profile；每组结果携带新 profile identity 和 index ID；不复用过期 labels。
 
 参考答案要点：小块通常提高定位精度但可能丢上下文并增大对象数；大块可能提高单块信息量但增加噪声和预算压力；结构感知策略只有在源结构可靠时占优。报告必须承认样本量和任务分布限制，不能把一次局部提升推广为通用规律。
 
