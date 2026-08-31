@@ -1,7 +1,7 @@
 # RAG 重构架构：课程、实验与生产项目边界
 
 > 文档编号：`MUJI-20-RAG-ARCH`<br>
-> 架构版本：`0.1.0`（草案，待审批）<br>
+> 架构版本：`0.1.1`（Stage 1 审查修订版）<br>
 > 适用范围：阶段 03「RAG 检索增强生成」的课程载体、可运行实验项目、生产级参考项目<br>
 > 上游输入：MUJI-17（RAG 教案重构要求）、MUJI-19-RAG-CONTRACTS（代码与数据契约基线 v1.0.0）、`datawhalechina/all-in-rag` 本地基准仓库 commit `64bd738`<br>
 > 资料核对基准日：2026-08-29
@@ -22,7 +22,7 @@
 | MUJI-19 代码与数据契约基线 | v1.0.0（已提交 `9ba2839`） | 定义 SourceDocument / ParsedDocument / Chunk / EmbeddingRecord / RetrievalQuery / Candidate / RankedHit / Citation / Answer / EvalCase / TraceEvent 的形状、ID 与不变量；本架构引用但不重述 |
 | `all-in-rag` 基准仓库 | commit `64bd738` | 章节路线（C1–C9）与可运行示例作为「继承点」；其临时对象语义与弱评估作为「不应照搬的点」 |
 | 项目工程准则 | v1.0 | 文档编号（`REQ-` / `ADR-` / `API-` / `MOD-` 等）、命名、模块边界、错误码规范 |
-| 学习任务清单 | 53 任务 / 10 阶段 | 阶段 03 含 7 任务（3.1–3.8），本架构须映射到可执行的课程、实验、评测三个互不重叠的实现任务 |
+| 学习任务清单 | 53 任务 / 10 阶段 | 阶段 03 实际列出 8 个任务（3.1–3.8；原清单标题中的“7 个任务”为数量笔误），本架构须逐项映射到课程、实验、评测和阶段验收 |
 
 ### 0.3 设计闭环：概念 → 数据对象 → 调用链 → 失败实验 → 指标 → 生产决策
 
@@ -41,10 +41,10 @@ flowchart LR
 | 环节 | 载体 | 核心问题 | 产出物 |
 |---|---|---|---|
 | 一、概念 | `lessons/` 教案 | 「为什么」与「是什么」 | 白话解释、原理、最小代码、练习 |
-| 二、数据对象 | MUJI-19 契约 + `corpus/` 语料 | 每个字段属于哪个类别（`F`/`D`/`O`） | 不可变领域对象、ID、不变量 |
+| 二、数据对象 | MUJI-19 契约 + `datasets/<dataset_id>/<version>/` 数据包 | 每个字段属于哪个类别（`F`/`D`/`O`） | 不可变领域对象、ID、不变量 |
 | 三、调用链 | `labs/` 可运行实验 | 端到端如何跑通 | 可复现的 pipeline 运行结果 |
 | 四、失败实验 | `labs/*/failures/` + `tests/boundary/` | 系统在何种输入/故障下如何降级 | 故障码、降级行为、回归测试 |
-| 五、指标 | `eval/` 评测集 + `metrics/` | 检索/生成/系统三层质量 | 量化分数、对比报告 |
+| 五、指标 | 版本化 dataset 包 + `results/` 运行产物 | 检索/生成/系统三层质量 | 量化分数、对比报告 |
 | 六、生产决策 | `extensions/` | 离线 demo 与生产部署的差距 | 配置化、可观测性、成本/延迟预算 |
 
 > **闭环纪律**：每个 `lab` 必须至少经历「正常跑通 → 注入一种失败 → 用指标量化差距 → 提出一种生产改进」。不允许「只跑通不破坏」的实验设计。
@@ -129,8 +129,8 @@ flowchart TD
 | Gate | 位置 | 通过标准（可验证） | 验证方式 |
 |---|---|---|---|
 | **G1 跑通** | L02 后 | lab01 MVP 端到端跑通，输出可检索的 chunk 与向量索引 | `make lab01` 通过，输出 index manifest |
-| **G2 优化** | L04 后 | lab04 混合检索 + Rerank 在评测集上 Recall@5 超过 Naive 基线 ≥ 10% | `make lab04` 输出对比报告 |
-| **G3 评估** | L06 后 | lab06 端到端评估：Faithfulness ≥ 0.8，并至少完成 3 个失败实验 | `make lab06` 输出评估报告 + 失败实验记录 |
+| **G2 优化** | L04 后 | 在固定 `dataset_id@version`、index 与 metric profile 下，lab04 的 Recall@5 比 Naive 基线绝对提升 ≥ 0.10（10 个百分点） | `make lab04` 输出带 dataset/index/profile/hash 的对比报告 |
+| **G3 评估** | L06 后 | 在固定 `dataset_id@version`、system/metric profile 下，lab06 Faithfulness ≥ 0.80，并至少完成 3 个失败实验 | `make lab06` 输出带 manifest/profile/hash 的评估报告 + 失败实验记录 |
 | **G4 工程化** | E04 后 | 全链路配置化 + TraceEvent 可查 + CI 回归通过 | `make ci` 通过，trace 可查 |
 
 ### 1.3 与学习任务清单的映射
@@ -144,6 +144,7 @@ flowchart TD
 | 3.5 RAG 优化 | L04 + E01 + lab04 | 优化前后对比报告 |
 | 3.6 RAG 评估 | L06 + E02 + lab06 | RAGAS 评估报告 |
 | 3.7 开源 RAG 项目研读 | A01–A04（选读） | 500 字架构分析 |
+| 3.8 阶段验收 | G1–G4 + lab01–lab06 | 3.4 项目、3.6 评估报告、可复现 README 与验收证据 |
 
 ---
 
@@ -215,7 +216,7 @@ flowchart LR
 
 | 项 | 定义 |
 |---|---|
-| **职责**： | 接收 RetrievalQuery → 查询改写 → 多通道（dense/sparse）召回 → 融合为 CandidateSet |
+| **职责**： | 接收 RetrievalQuery → 查询改写 → 多通道（dense/sparse）召回 → 汇总为保留 `channel/raw_rank/raw_score` 的 CandidateSet；不在本阶段执行 RRF |
 | **输入**： | 完整 `RetrievalQuery`（含 original_text、normalized_text、filters、top_k、retrieval_profile、index_id、rewrite_steps） |
 | **输出**： | `CandidateSet{query_id, index_id, candidates[]}` |
 | **成功/空结果语义**： | 无命中返回 success + `candidates=[]`，不是 404/500 |
@@ -337,8 +338,7 @@ answer_id → citation_id → ranked_hit_id → chunk_id → parsed_document_id 
 | 教案（lesson） | `lessons/L0X_*.md` | 课程作者 | 禁止在 `labs/` 中重复讲解概念 |
 | 实验代码 | `labs/labXX_*/` | 实验作者 | 禁止在 `lessons/` 中放完整实现代码 |
 | 领域对象契约 | MUJI-19-RAG-CONTRACTS | 数据与接口工程师 | 禁止在本架构中重述字段级契约 |
-| 样例语料 | `corpus/` | 语料管理员 | 禁止在 `code/` 中硬编码语料 |
-| 评测集 | `eval/` | 评测管理员 | 禁止把评测集与训练/调参数据混用 |
+| 版本化语料与评测真值 | `datasets/<dataset_id>/<version>/`（布局见 MUJI-19 §9） | 语料管理员 + 评测管理员 | 禁止复制出第二份 corpus/manifest；禁止把评测集与训练/调参数据混用 |
 | 测试 | `tests/` | 各模块作者 + 自动化测试工程师 | 禁止把测试当作文档使用 |
 | 运行结果 | `results/`（git-ignored，可复现） | 实验运行 | 禁止把运行结果当作验收证据（只认脚本 + 锁定配置） |
 | 配置文件 | `configs/` | 配置管理员 | 禁止在代码中硬编码 profile |
@@ -350,8 +350,8 @@ answer_id → citation_id → ranked_hit_id → chunk_id → parsed_document_id 
 |---|---|---|
 | 教案 → 数据对象 | 通过契约编号链接到 MUJI-19 | 「Chunk 的形状见 `MUJI-19-RAG-CONTRACTS §3.3`」 |
 | 实验 → 教案 | 每个 lab 头部声明依赖的 lesson | `prerequisites: [L01, L02]` |
-| 实验 → 语料 | 通过 `dataset_id@version` 引用 | `corpus/cooking@1.0.0` |
-| 实验 → 评测集 | 通过 `dataset_id@version` 引用 | `eval/cooking_eval@1.0.0` |
+| 实验 → 语料 | 通过 `dataset_id@version` 和 manifest 中的 `corpus.jsonl` 引用 | `dataset://rag_course_cooking/1.0.0/manifest.json#corpus.jsonl` |
+| 实验 → 评测集 | 通过同一 manifest 中的 eval/ground-truth/label 文件引用 | `dataset://rag_course_cooking/1.0.0/manifest.json#eval_cases.jsonl` |
 | 运行结果 → 配置 | 结果必须携带 `config_hash` + `profile_version` | `config_hash: sha256:7c9f...` |
 | 运行结果 → 代码版本 | 结果必须携带 commit SHA | `code_version: 9ba2839` |
 | 评测 → 失败实验 | 评测报告必须引用失败实验编号 | `failure_experiment: lab04-fail-03` |
@@ -446,7 +446,7 @@ class EvaluationPort(Protocol):
 | **状态** | 接受（Accepted） |
 | **背景** | 学员常因 API Key 缺失、网络限制、额度耗尽而无法跑通实验。教学实验必须保证「零密钥也能跑通基线」。 |
 | **备选方案** | A) 全程依赖云端 API（OpenAI / DeepSeek）；B) **本地模型 + 本地嵌入 + FAISS 作为默认基线**，云端 API 作为可选扩展 |
-| **决策** | 采用方案 B：默认基线使用本地嵌入模型（如 `bge-small-zh-v1.5`）+ FAISS + 可选本地 LLM（Ollama 运行 `qwen2.5`）；云端 API 通过 adapter 注入，不改变 port |
+| **决策** | 采用方案 B：默认检索基线使用本地嵌入模型（如 `bge-small-zh-v1.5`）+ FAISS；CI/零密钥生成与 judge 评测使用版本化 deterministic fixture adapter，保证全部 lab 可回归；Ollama（如 `qwen2.5`）用于本地真实模型扩展，云端 API 通过 adapter 注入，均不改变 port |
 | **理由** | 保证任何学员在离线环境下跑通必修主线；云端 API 作为「进阶选项」而非「前置条件」 |
 | **后果** | 本地模型效果弱于云端大模型，但足以演示流程；需在教案中明确「基线效果 ≠ 生产效果」 |
 | **依据** | Ollama 官方文档支持本地运行开源模型 [^3]；sentence-transformers 支持离线嵌入 [^4]；FAISS 纯本地向量检索 [^5]；核对日期 2026-08-29 |
@@ -517,9 +517,9 @@ class EvaluationPort(Protocol):
 
 | 非功能目标 | 可验证目标值 | 验证方式 | 兜底策略 |
 |---|---|---|---|
-| **可复现性** | 相同代码 + 配置 + 语料 → 相同结果（ID 确定性） | CI 跑 `make lab01-lab06`，对比 `config_hash` 与 `content_checksum` | 锁定依赖版本（ADR-003）；确定性 ID（MUJI-19 §2.2） |
+| **可复现性** | 相同代码 + 配置 + dataset manifest → 确定性对象 ID 与相同结构化产物；真实模型文本只要求固定评测门槛，不承诺逐字节一致 | CI 跑 `make lab01-lab06`，校验 manifest/config/code hash，并比较 chunk/index/output/metric artifact checksum；真实模型路径比较指标与 schema | 锁定依赖版本（ADR-003）；确定性 ID（MUJI-19 §2.2）；区分 deterministic fixture 与真实模型 |
 | **启动时间** | 离线基线冷启动（含嵌入模型加载）≤ 60s；索引缓存命中 ≤ 5s | `make bench-startup` 计时 | 索引持久化缓存（MUJI-19 §4.1 IndexManifest） |
-| **无密钥路径** | 必修主线 100% 可在无 API Key 环境下跑通 | CI 在无密钥环境跑通全部 lab | 本地嵌入 + FAISS + 可选 Ollama（ADR-002） |
+| **无密钥路径** | 必修主线 100% 可在无 API Key、无 Ollama 环境下跑通 | CI 清空云端密钥且禁用 Ollama，使用 fixture adapter 跑通全部 lab；另设 Ollama 可选集成测试 | 本地嵌入 + FAISS + deterministic generation/judge fixture；Ollama 可选（ADR-002） |
 | **测试** | 单元测试 + 契约测试 + 边界场景测试覆盖率 ≥ 80% | `make test` + coverage 报告 | MUJI-19 §7.1 必测边界场景作为回归基线 |
 | **性能预算** | 单 query 端到端（检索+生成）p95 ≤ 30s（离线基线） | `make bench-e2e` 输出延迟分布 | 超时降级（ADR-005 追踪 + ADR-007 失败实验） |
 | **安全** | 无密钥/个人信息泄漏；日志只记 ID/计数/哈希 | 静态检查 + 日志审计 | MUJI-19 §1 禁止在日志中复制原文/完整 prompt/向量/密钥 |
@@ -535,7 +535,7 @@ class EvaluationPort(Protocol):
 | 继承项 | 来源 | 本架构如何保留 |
 |---|---|---|
 | 章节路线（C1–C9 的知识递进） | `all-in-rag` README 内容大纲 | 映射到 L01–L06 + A01–A04 的三层结构 |
-| 菜谱语料（HowToCook）实战项目 | `all-in-rag` C8「尝尝咸淡」 | 作为 `corpus/cooking/` 默认语料，lab01–lab06 围绕其展开 |
+| 菜谱语料（HowToCook）实战项目 | `all-in-rag` C8「尝尝咸淡」 | 作为 `datasets/rag_course_cooking/<version>/corpus.jsonl` 默认语料，lab01–lab06 围绕其展开 |
 | 白话解释 + 最小代码风格 | `all-in-rag` 各章「白话解释」 | 沿用并强化为「白话解释 → 核心原理 → 最小代码 → 学员实践 → 工程扩展 → 复盘」 |
 | 多模态嵌入（C3） | `all-in-rag` C3 | 作为 A03 选修前沿 |
 | GraphRAG（C7/C9） | `all-in-rag` C7/C9 | 作为 A01 选修前沿 |
@@ -547,10 +547,10 @@ class EvaluationPort(Protocol):
 | **闭环教学** | 只展示「跑通」 | 概念→数据对象→调用链→失败实验→指标→生产决策闭环 |
 | **代码与数据契约** | 临时对象语义（Document.metadata 原地修改、随机 UUID） | MUJI-19 定义不可变对象、确定性 ID、类别（F/D/O） |
 | **引用与可溯源** | 生成只返回字符串 | Answer 必须携带 Citation，事实性 claim 必须有 citation |
-| **评估深度** | C6 仅介绍 RAGAS 三元组 | L06 + lab06 端到端评估 + 失败实验 + 量化报告 |
+| **评估深度** | C6 使用 LlamaIndex evaluator 展示局部评估，未建立版本化评测集与完整 RAGAS 三元组门禁 | L06 + lab06 端到端评估 + 失败实验 + 量化报告 |
 | **可观测性** | 无 TraceEvent | M8 observability 模块，append-only TraceEvent 链 |
 | **工程扩展** | 无工程化内容 | E01–E04 配置化/可观测/评测门禁/失败实验系统化 |
-| **离线基线** | 依赖云端 API | ADR-002 无密钥路径，本地嵌入 + FAISS + 可选 Ollama |
+| **离线基线** | 依赖云端 API | ADR-002 无密钥路径：本地嵌入 + FAISS + deterministic fixture；Ollama 为真实模型扩展 |
 
 ### 7.3 不应照搬的点（明确摒弃）
 
@@ -571,9 +571,9 @@ class EvaluationPort(Protocol):
 
 | 项 | 结论 |
 |---|---|
-| **当前设计阶段** | 架构定义阶段（草案 v0.1.0） |
-| **审批结论** | **待审批**（本架构师自审通过，待课程负责人/产品与需求工程师确认三层课程结构与任务映射） |
-| **通过条件** | 三层课程结构（必修/工程扩展/选修）与任务清单 3.1–3.8 映射无矛盾；7 个 ADR 无未解决异议；非功能目标可验证 |
+| **当前设计阶段** | 架构定义阶段（Stage 1 审查修订版 v0.1.1） |
+| **审批结论** | **接受（Accepted）**，可作为 Stage 2 课程、评测与实验实现的共同基线 |
+| **通过证据** | 三层课程结构已覆盖任务 3.1–3.8；7 个 ADR 无未解决异议；跨文档 DTO、目录与 Trace 语义经合并前审查统一；非功能目标均给出可执行验证口径 |
 
 ### 8.2 风险 / 阻塞
 
@@ -582,7 +582,7 @@ class EvaluationPort(Protocol):
 | MUJI-19 契约基线尚在演进 | 本架构引用其 v1.0.0，若其变更需同步更新 | 本架构只引用模块级边界，字段级变更不影响本架构 |
 | 本地模型效果弱于云端 | 学员可能误判 RAG 上限 | 教案明确「基线效果 ≠ 生产效果」；云端 API 作为可选扩展 |
 | 课程开发工作量较大 | 必修 6 lesson + 6 lab + 工程扩展 4 + 选修 4 | 分阶段交付：先必修主线（3.1–3.6），再工程扩展（3.5 深化），最后选修（3.7） |
-| 评测集建设滞后 | lab06 依赖 `eval/cooking_eval@1.0.0` | 优先建设 cooking 评测集（约 50 条），再扩展 zh_faq |
+| 评测集建设滞后 | lab06 依赖 `dataset://rag_course_cooking/1.0.0/manifest.json` | 优先建设 cooking 评测集（约 50 条），再扩展 zh_faq |
 
 ### 8.3 下一决策或交接
 

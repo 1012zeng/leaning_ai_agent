@@ -123,13 +123,15 @@ FilterExpr = {}
 
 ### 3.1 `SourceDocument`
 
-**含义**：连接器发现的一份逻辑来源的某个不可变内容版本。原始 bytes 存对象存储，JSON 只携带地址与校验信息。
+**含义**：连接器发现的一份逻辑来源在某时刻的不可变内容/生命周期快照。原始 bytes 存对象存储，JSON 只携带地址、校验信息和可追加的状态事实。
 
 | 字段 | JSON 类型 | 必填 | 类别 | 语义 |
 |---|---|---:|:---:|---|
 | `schema_version` | string | 是 | D | 固定 `1.0.0` |
 | `source_document_id` | string | 是 | D | 逻辑来源 ID |
 | `source_version_id` | string | 是 | D | 当前原始 bytes 的内容 ID |
+| `source_state_id` | string | 是 | F | 本次生命周期状态事实的 UUIDv7；删除/恢复时追加新状态，不改旧快照 |
+| `state_effective_at` | string(date-time) | 是 | F | 该状态事实生效时间，UTC RFC 3339 |
 | `tenant_id` | string | 是 | F | 数据隔离边界 |
 | `connector_id` | string | 是 | F | 来源系统/连接器稳定标识 |
 | `external_source_id` | string | 是 | F | 来源系统内稳定主键；无主键时使用规范化 URI |
@@ -142,13 +144,13 @@ FilterExpr = {}
 | `source_metadata` | object | 是 | F | 白名单来源属性；不得放运行分数 |
 | `lifecycle_state` | enum | 是 | F | `active` / `tombstoned` |
 
-- **ID/版本**：内容变化保留 `source_document_id`，生成新 `source_version_id`；改名若 `external_source_id` 不变，不产生新逻辑文档。
+- **ID/版本**：内容变化保留 `source_document_id`，生成新 `source_version_id` 和 `source_state_id`；删除/恢复保留内容版本，只追加新的 `source_state_id`；改名若 `external_source_id` 不变，不产生新逻辑文档。
 - **所有者**：ingestion/source connector。
-- **不变量**：读取 `blob_uri` 得到的 bytes 长度和 SHA-256 必须分别等于 `byte_size`、`content_sha256`；同一 `(tenant_id, connector_id, external_source_id, source_version_id)` 唯一。
+- **不变量**：读取 `blob_uri` 得到的 bytes 长度和 SHA-256 必须分别等于 `byte_size`、`content_sha256`；`source_state_id` 全局唯一，同一 `(tenant_id, connector_id, external_source_id, source_version_id, source_state_id)` 唯一；按 `(state_effective_at, source_state_id)` 排序后的最后一条事实决定当前 lifecycle state，历史快照不可改写。
 - **常见错误**：`EMPTY_DOCUMENT`、`UNSUPPORTED_MEDIA_TYPE`、`CONTENT_HASH_MISMATCH`、错误地用本地绝对路径当跨环境 `source_uri`。
 
 ```json
-{"schema_version":"1.0.0","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","tenant_id":"course","connector_id":"repo_corpus","external_source_id":"cook/soup/tomato.md","source_uri":"repo://corpus/cook/soup/tomato.md","display_name":"番茄蛋汤","media_type":"text/markdown","byte_size":1842,"content_sha256":"9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","blob_uri":"blob://sha256/9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","source_metadata":{"category":"汤品"},"lifecycle_state":"active"}
+{"schema_version":"1.0.0","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","source_state_id":"0198f8c1-a129-7ca0-9c7a-e0e96f6cc201","state_effective_at":"2026-08-29T08:00:00Z","tenant_id":"course","connector_id":"repo_corpus","external_source_id":"cook/soup/tomato.md","source_uri":"repo://corpus/cook/soup/tomato.md","display_name":"番茄蛋汤","media_type":"text/markdown","byte_size":1842,"content_sha256":"9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","blob_uri":"blob://sha256/9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","source_metadata":{"category":"汤品"},"lifecycle_state":"active"}
 ```
 
 ### 3.2 `ParsedDocument`
@@ -409,9 +411,9 @@ FilterExpr = {}
 |---|---|---:|:---:|---|
 | `schema_version` | string | 是 | O | 观测事件 schema |
 | `event_id` | string | 是 | O | UUIDv7 |
-| `trace_id` | string | 是 | O | 端到端运行 ID |
-| `span_id` | string | 是 | O | 当前 stage span |
-| `parent_span_id` | string | 否 | O | 因果父 span |
+| `trace_id` | string | 是 | O | W3C/OpenTelemetry TraceId：32 个小写十六进制字符（16 bytes，非全零） |
+| `span_id` | string | 是 | O | W3C/OpenTelemetry SpanId：16 个小写十六进制字符（8 bytes，非全零） |
+| `parent_span_id` | string | 否 | O | 直接因果父 span 的 16 位小写十六进制 SpanId；根 span 省略，绝不能填 trace ID |
 | `sequence` | integer >= 0 | 是 | O | 同 trace 内单调递增序号 |
 | `stage` | enum | 是 | O | ingestion/indexing/retrieval/rerank/context/generation/evaluation |
 | `event_type` | enum | 是 | O | `stage_started/completed/failed/retried/fallback` |
@@ -423,13 +425,13 @@ FilterExpr = {}
 | `attributes` | object | 是 | O | 白名单低基数字段，如 profile/index ID |
 | `problem` | ProblemDetails | 否 | O | 失败/降级原因，禁止异常栈 |
 
-- **ID/版本**：event/trace/span 使用 UUIDv7 或兼容的 W3C trace ID；事件 append-only。
+- **ID/版本**：event ID 使用 UUIDv7；trace/span ID 严格使用 W3C Trace Context / OpenTelemetry 的 32-hex TraceId 与 16-hex SpanId 表示；事件 append-only。
 - **所有者**：observability adapter。
 - **不变量**：同 trace 的 sequence 唯一；completed/failed 事件必须引用 started span；metrics 不能含正文；`status=error` 必须有 problem。
 - **常见错误**：高基数正文进入 metrics、日志泄漏 prompt/密钥、重试未关联原 span、事件时间被当作领域对象创建时间。
 
 ```json
-{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","span_id":"0198f8dd-b75a-76bc-9d28-bc656111f3ec","parent_span_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
+{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
 ```
 
 ## 4. 辅助契约
@@ -520,10 +522,10 @@ class EvaluationPort(Protocol):
 | ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 为 `unchanged`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希 |
 | indexing | `IndexBuildCommand{index_build_id, corpus_version, chunk_ids[], embedding_profile, index_profile, publish_alias?, expected_active_index_id?}` | `IndexBuildReport{IndexManifest, embedding_refs, item_results}` | 先写 staging；完整验证后 manifest `ready`；部分成功默认不发布 alias | embedding、维度、批写、后端 schema、manifest 校验、alias CAS |
 | retrieval | 完整 `RetrievalQuery` | `CandidateSet{query_id,index_id,candidates[]}` | 无命中返回 success + `candidates=[]`，不是 404/500 | 查询校验、filter、index readiness、后端超时 |
-| rerank | `RerankCommand{query,candidates,rerank_profile,limit}` | `RankedHitSet{query_id,hits[],confidence}` | 空 candidates 返回 success + 空 hits；低于阈值仍返回 hits，但全部 `eligible_for_context=false` | 候选引用、模型超时、分数非有限、profile 不兼容 |
-| context assembly | `ContextAssemblyCommand{query,ranked_hits,assembly_profile,token_budget}` | `ContextBundle` | 无 eligible hit 返回空 context bundle + `NO_ELIGIBLE_HITS` warning | token 预算、缺失 chunk、版本漂移、重复/冲突证据 |
-| generation | `GenerationCommand{answer_id,query,context_bundle,generator_profile}` | `GenerationResult{Answer,Citation[]}` | 空上下文或低置信度返回 `insufficient_evidence`；不调用或停止模型由 profile 决定 | 模型超时、输出 schema、引用校验、长度截断 |
-| evaluation | `EvaluationCommand{evaluation_run_id,dataset_manifest,system_profile,index_id,metric_profiles[]}` | `EvaluationReport{per_case[],aggregate_metrics,failed_cases[]}` | 单 case evaluator 失败为 partial_success；聚合分母必须排除项并显式报告 | 数据版本、label 引用、评估器超时、指标不可计算 |
+| rerank | `RerankCommand{query_id,candidate_ids[],rerank_profile,limit}` | `RankedHitSet{query_id,hits[],confidence}` | port 按 ID 从同一 pipeline snapshot 解析不可变对象；空 candidates 返回 success + 空 hits；低于阈值仍返回 hits，但全部 `eligible_for_context=false` | 候选引用、模型超时、分数非有限、profile 不兼容 |
+| context assembly | `ContextAssemblyCommand{query_id,ranked_hit_ids[],assembly_profile,token_budget}` | `ContextBundle` | port 按 ID 解析不可变 RankedHit；无 eligible hit 返回空 context bundle + `NO_ELIGIBLE_HITS` warning | token 预算、缺失 chunk、版本漂移、重复/冲突证据 |
+| generation | `GenerationCommand{answer_id,query_id,context_bundle_id,generator_profile}` | `GenerationResult{Answer,Citation[]}` | port 按 ID 解析冻结 ContextBundle；空上下文或低置信度返回 `insufficient_evidence`；不调用或停止模型由 profile 决定 | 模型超时、输出 schema、引用校验、长度截断 |
+| evaluation | `EvaluationCommand{evaluation_run_id,dataset_manifest_uri,system_profile,index_id,metric_profiles[]}` | `EvaluationReport{per_case[],aggregate_metrics,failed_cases[]}` | 单 case evaluator 失败为 partial_success；聚合分母必须排除项并显式报告 | 数据版本、label 引用、评估器超时、指标不可计算 |
 
 ### 5.3 具体请求/响应最低字段
 
@@ -649,7 +651,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 2. bytes hash 未变：返回 `unchanged`，不得重新解析/向量化。
 3. bytes hash 改变：新增 SourceDocument version、ParsedDocument、Chunk、EmbeddingRecord；旧版本保持可读。
 4. 构建包含新版本的 immutable index，验证 coverage 和评测门槛后原子切换 alias。
-5. 来源删除：追加 `lifecycle_state=tombstoned` 的来源状态事实并建新 corpus/index；旧 index 用于历史 Answer/Citation 复盘，按保留策略异步回收。
+5. 来源删除：保留 `source_document_id` 和最后的 `source_version_id`，追加具有新 `source_state_id/state_effective_at` 且 `lifecycle_state=tombstoned` 的 SourceDocument 状态快照，再建新 corpus/index；旧快照与旧 index 用于历史 Answer/Citation 复盘，按保留策略异步回收。
 
 ### 8.2 重建索引与模型维度变化
 
@@ -738,10 +740,10 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 
 ### 9.2 语料 `corpus.jsonl`
 
-每行是一个 SourceDocument 版本。原始内容不内联，防止 JSONL 膨胀并保持 bytes 校验。
+每行是一个不可变 SourceDocument 内容/状态快照。相同 `source_version_id` 可因删除或恢复出现多个不同 `source_state_id`；加载当前语料时只选按 `(state_effective_at, source_state_id)` 排序的最新 active 快照。原始内容不内联，防止 JSONL 膨胀并保持 bytes 校验。
 
 ```jsonl
-{"schema_version":"1.0.0","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","tenant_id":"course","connector_id":"repo_corpus","external_source_id":"cook/soup/tomato.md","source_uri":"repo://corpus/cook/soup/tomato.md","display_name":"番茄蛋汤","media_type":"text/markdown","byte_size":1842,"content_sha256":"9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","blob_uri":"blob://sha256/9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","source_metadata":{"category":"汤品"},"lifecycle_state":"active"}
+{"schema_version":"1.0.0","source_document_id":"src_2f4f6f1a-3e67-5ea0-8f0d-57ab81c71822","source_version_id":"sv_9b63e28f7af74c37d8e34df8739dfc20","source_state_id":"0198f8c1-a129-7ca0-9c7a-e0e96f6cc201","state_effective_at":"2026-08-29T08:00:00Z","tenant_id":"course","connector_id":"repo_corpus","external_source_id":"cook/soup/tomato.md","source_uri":"repo://corpus/cook/soup/tomato.md","display_name":"番茄蛋汤","media_type":"text/markdown","byte_size":1842,"content_sha256":"9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","blob_uri":"blob://sha256/9b63e28f7af74c37d8e34df8739dfc20a9d7f18a22f9b98d6ea64db0b729100","source_metadata":{"category":"汤品"},"lifecycle_state":"active"}
 ```
 
 ### 9.3 EvalCase core 与 ground truth
@@ -786,8 +788,8 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 ### 9.6 运行轨迹 `trace_events.jsonl`
 
 ```jsonl
-{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","span_id":"0198f8dd-b75a-76bc-9d28-bc656111f3ec","parent_span_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
-{"schema_version":"1.0.0","event_id":"0198f8de-19f1-7275-95a0-932974eea009","trace_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","span_id":"0198f8de-1539-7ab4-a838-dd22d6debcff","parent_span_id":"0198f8d7-16a1-7a16-aee4-7c275530d41a","sequence":7,"stage":"rerank","event_type":"fallback","occurred_at":"2026-08-29T09:00:01Z","status":"degraded","input_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"output_refs":{"ranked_hit_ids":["hit_a57f707790895e23d08072927459f04a"]},"metrics":{"duration_ms":1000},"attributes":{"fallback_profile_id":"rerank.rrf_only"},"problem":{"type":"https://contracts.example/rag/problems/upstream-timeout","title":"Reranker timed out","status":504,"detail":"Rerank budget of 1000 ms was exceeded.","instance":"urn:request:0198f902","code":"UPSTREAM_TIMEOUT","stage":"rerank","retryable":true}}
+{"schema_version":"1.0.0","event_id":"0198f8de-064b-79ac-92af-3880777fd85d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"a2fb4a1d1a96d312","sequence":6,"stage":"retrieval","event_type":"stage_completed","occurred_at":"2026-08-29T09:00:00Z","status":"ok","input_refs":{"query_ids":["0198f8d7-2f69-7aa1-bb32-77ea087b2c41"]},"output_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"metrics":{"duration_ms":42,"candidate_count":20},"attributes":{"index_id":"idx_course_20260829_01","profile_id":"retrieve.hybrid_rrf"}}
+{"schema_version":"1.0.0","event_id":"0198f8de-19f1-7275-95a0-932974eea009","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"8c72b32f9a4dbe11","parent_span_id":"00f067aa0ba902b7","sequence":7,"stage":"rerank","event_type":"fallback","occurred_at":"2026-08-29T09:00:01Z","status":"degraded","input_refs":{"candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"]},"output_refs":{"ranked_hit_ids":["hit_a57f707790895e23d08072927459f04a"]},"metrics":{"duration_ms":1000},"attributes":{"fallback_profile_id":"rerank.rrf_only"},"problem":{"type":"https://contracts.example/rag/problems/upstream-timeout","title":"Reranker timed out","status":504,"detail":"Rerank budget of 1000 ms was exceeded.","instance":"urn:request:0198f902","code":"UPSTREAM_TIMEOUT","stage":"rerank","retryable":true}}
 ```
 
 ## 10. 版本兼容策略
