@@ -379,6 +379,7 @@ class Candidate:
     candidate_id: str
     query_id: str
     chunk_id: str
+    source_document_id: str
     source_version_id: str
     index_id: str
     retrieval_channel: str

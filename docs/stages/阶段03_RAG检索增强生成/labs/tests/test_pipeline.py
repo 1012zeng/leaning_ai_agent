@@ -108,3 +108,37 @@ def test_output_artifacts_keep_trace_separate(
     assert output["shape"]["answer_outcome"] == "answered"
     assert len(lines) == len(pipeline_result.trace_events)
     assert all(json.loads(line)["schema_version"] == "1.0.0" for line in lines)
+
+
+def test_ingestion_is_idempotent_with_known_versions(config: LabConfig) -> None:
+    first = OfflineRagPipeline(config).run()
+    assert first.ingestion.unchanged_count == 0
+    assert first.ingestion.created_count == len(first.ingestion.source_documents)
+    known_versions = {
+        document.external_source_id: document.source_version_id
+        for document in first.ingestion.source_documents
+    }
+    second = OfflineRagPipeline(config).run(known_versions=known_versions)
+    assert second.ingestion.created_count == 0
+    assert second.ingestion.unchanged_count == len(second.ingestion.source_documents)
+    assert [item.status for item in second.ingestion.item_results] == [
+        "unchanged",
+        "unchanged",
+        "unchanged",
+    ]
+    fresh_id = next(iter(known_versions.values()))
+    changed = dict(known_versions)
+    external_id = next(iter(changed))
+    changed[external_id] = "sv_" + "0" * 32
+    third = OfflineRagPipeline(config).run(known_versions=changed)
+    assert third.ingestion.created_count == 1
+    assert third.ingestion.unchanged_count == len(third.ingestion.source_documents) - 1
+
+
+def test_candidates_carry_source_document_id(pipeline_result: PipelineResult) -> None:
+    by_chunk = {chunk.chunk_id: chunk for chunk in pipeline_result.ingestion.chunks}
+    source_ids = {document.source_document_id for document in pipeline_result.ingestion.source_documents}
+    assert pipeline_result.candidates.candidates, "expected at least one candidate"
+    for candidate in pipeline_result.candidates.candidates:
+        assert candidate.source_document_id in source_ids
+        assert candidate.source_document_id == by_chunk[candidate.chunk_id].source_document_id

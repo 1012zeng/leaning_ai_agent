@@ -61,10 +61,10 @@ class HybridRetriever:
         dense = [
             item
             for item in self._store.search(
-                self._embedder.embed_query(query.normalized_text), len(self._snapshot.chunks)
+                self._embedder.embed_query(query.normalized_text), self._top_k
             )
             if item[0] in eligible and item[1] >= self._min_dense_score
-        ][: self._top_k]
+        ]
         sparse = self._bm25(query.normalized_text, eligible)[: self._top_k]
         candidates: list[Candidate] = []
         for channel, score_kind, ranked in (
@@ -81,6 +81,7 @@ class HybridRetriever:
                         ),
                         query_id=query.query_id,
                         chunk_id=chunk_id,
+                        source_document_id=chunk.source_document_id,
                         source_version_id=chunk.source_version_id,
                         index_id=query.index_id,
                         retrieval_channel=channel,

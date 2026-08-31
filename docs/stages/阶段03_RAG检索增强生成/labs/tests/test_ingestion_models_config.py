@@ -164,3 +164,72 @@ def test_config_rejects_path_escape_and_non_finite_number(
     non_finite_path.write_text(json.dumps(raw), encoding="utf-8")
     with pytest.raises(ValueError, match="finite"):
         load_config(non_finite_path)
+
+
+def test_marker_based_chunking_matches_eval_catalog(config: LabConfig) -> None:
+    document = (
+        "# 番茄蛋汤\n\n"
+        "<!-- chunk: tomato-soup-ingredients -->\n"
+        "## 原料（2人份）\n\n"
+        "- 番茄 300 克\n"
+        "- 鸡蛋 2 个\n\n"
+        "<!-- chunk: tomato-soup-steps -->\n"
+        "## 步骤\n\n"
+        "番茄切块后中火炒 2 分钟。\n\n"
+        "<!-- chunk: tomato-soup-tips -->\n"
+        "## 关键提示\n\n"
+        "蛋液入锅后不要立即大幅搅动。\n"
+    )
+    source = SourceInput(
+        "marked.md",
+        "repo://test/marked.md",
+        "marked",
+        "text/markdown",
+        document.encode("utf-8"),
+        {},
+    )
+    result = MarkdownIngestion(20, 2, strict_utf8=True).ingest(_command(config, source))
+    assert result.status == "success"
+    assert result.data is not None
+    report = result.data
+    assert len(report.chunks) == 3
+    assert [chunk.ordinal for chunk in report.chunks] == [0, 1, 2]
+    assert [chunk.chunk_id for chunk in report.chunks] == [
+        derived_id(
+            "chk",
+            report.parsed_documents[0].parsed_document_id,
+            config.chunk_profile.identity,
+            index,
+            chunk.document_char_span.start,
+            chunk.document_char_span.end,
+            chunk.text_sha256,
+        )
+        for index, chunk in enumerate(report.chunks)
+    ]
+    sections = {chunk.section_path for chunk in report.chunks}
+    assert all(len(path) == 2 and path[0] == "番茄蛋汤" for path in sections)
+    for chunk in report.chunks:
+        span = chunk.document_char_span
+        assert report.parsed_documents[0].text[span.start : span.end].strip() == chunk.text
+
+
+def test_marker_chunk_missing_heading_raises(config: LabConfig) -> None:
+    document = (
+        "# 番茄蛋汤\n\n"
+        "<!-- chunk: bad-chunk -->\n"
+        "This section has no H2 heading.\n"
+    )
+    source = SourceInput(
+        "bad.md",
+        "repo://test/bad.md",
+        "bad",
+        "text/markdown",
+        document.encode("utf-8"),
+        {},
+    )
+    result = MarkdownIngestion(20, 2, strict_utf8=True).ingest(_command(config, source))
+    assert result.status == "failed"
+    assert result.data is not None
+    assert result.data.quarantined_count == 1
+    assert result.data.chunks == ()
+    assert result.data.item_results[0].problem is not None

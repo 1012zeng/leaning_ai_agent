@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import Literal
 
 from rag_lab.errors import problem
@@ -24,7 +26,14 @@ from rag_lab.models import (
     Span,
     StageResult,
 )
-from rag_lab.text import HEADING_PATTERN, normalize_text, parse_front_matter, token_spans, tokens
+from rag_lab.text import (
+    HEADING_PATTERN,
+    chunk_marker_boundaries,
+    normalize_text,
+    parse_front_matter,
+    token_spans,
+    tokens,
+)
 
 
 class MarkdownIngestion:
@@ -35,14 +44,27 @@ class MarkdownIngestion:
         self._overlap_tokens = overlap_tokens
         self._strict_utf8 = strict_utf8
 
-    def ingest(self, command: IngestionCommand) -> StageResult[IngestionReport]:
-        """Parse and structure-chunk every source, preserving partial outcomes."""
+    def ingest(
+        self,
+        command: IngestionCommand,
+        known_versions: Mapping[str, str] | None = None,
+    ) -> StageResult[IngestionReport]:
+        """Parse and structure-chunk every source, preserving partial outcomes.
 
+        When ``known_versions`` maps ``external_source_id`` to the ``source_version_id``
+        produced by a prior ingestion under the same idempotency key, unchanged content
+        is reported as ``unchanged`` instead of ``created``. Because all identifiers are
+        derived from the content and profile, re-ingesting identical bytes yields the same
+        deterministic IDs, so the operation is idempotent.
+        """
+
+        prior: Mapping[str, str] = known_versions or {}
         sources: list[SourceDocument] = []
         parsed_documents: list[ParsedDocument] = []
         chunks: list[Chunk] = []
         item_results: list[ItemResult] = []
         content_groups: defaultdict[str, list[str]] = defaultdict(list)
+        unchanged_count = 0
         for item in sorted(command.items, key=lambda value: value.external_source_id):
             source = self._source_document(command, item)
             sources.append(source)
@@ -81,17 +103,16 @@ class MarkdownIngestion:
                 continue
             parsed_documents.append(parsed)
             chunks.extend(item_chunks)
-            item_results.append(
-                ItemResult(
-                    item.external_source_id,
-                    "created",
-                    output_refs={
-                        "source_document_ids": (source.source_document_id,),
-                        "parsed_document_ids": (parsed.parsed_document_id,),
-                        "chunk_ids": tuple(chunk.chunk_id for chunk in item_chunks),
-                    },
-                )
-            )
+            output_refs = {
+                "source_document_ids": (source.source_document_id,),
+                "parsed_document_ids": (parsed.parsed_document_id,),
+                "chunk_ids": tuple(chunk.chunk_id for chunk in item_chunks),
+            }
+            if prior.get(item.external_source_id) == source.source_version_id:
+                item_results.append(ItemResult(item.external_source_id, "unchanged", output_refs=output_refs))
+                unchanged_count += 1
+            else:
+                item_results.append(ItemResult(item.external_source_id, "created", output_refs=output_refs))
         duplicate_groups = tuple(
             tuple(sorted(group)) for group in content_groups.values() if len(group) > 1
         )
@@ -105,14 +126,16 @@ class MarkdownIngestion:
             item_results=tuple(item_results),
             discovered_count=len(command.items),
             created_count=created_count,
-            unchanged_count=0,
+            unchanged_count=unchanged_count,
             quarantined_count=quarantined_count,
             failed_count=failed_count,
             duplicate_content_groups=duplicate_groups,
         )
         if created_count and (quarantined_count or failed_count):
-            status: Literal["success", "partial_success"] = "partial_success"
+            status: Literal["success", "partial_success", "unchanged"] = "partial_success"
         elif created_count:
+            status = "success"
+        elif unchanged_count and not (quarantined_count or failed_count):
             status = "success"
         else:
             top_problem = problem(
@@ -206,6 +229,9 @@ class MarkdownIngestion:
         )
 
     def _chunk(self, parsed: ParsedDocument, command: IngestionCommand) -> tuple[Chunk, ...]:
+        markers = chunk_marker_boundaries(parsed.text)
+        if markers is not None:
+            return self._chunk_by_markers(parsed, command, markers)
         boundaries = self._section_boundaries(parsed.text)
         chunks: list[Chunk] = []
         for start, end, section_path in boundaries:
@@ -261,6 +287,63 @@ class MarkdownIngestion:
             end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
             sections.append((heading.start(), end, tuple(path)))
         return tuple(sections)
+
+    def _chunk_by_markers(
+        self,
+        parsed: ParsedDocument,
+        command: IngestionCommand,
+        markers: tuple[tuple[str, int, int], ...],
+    ) -> tuple[Chunk, ...]:
+        """Chunk a document at explicit ``<!-- chunk: ... -->`` markers.
+
+        Each marker-delimited region must begin with an H2 heading. The section path is
+        built from the document H1 title plus that H2 heading, matching the eval dataset's
+        chunk catalog so chunk identities line up with the eval manifest.
+        """
+
+        title_match = re.search(r"^# ([^\n]+)", parsed.text, flags=re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else None
+        chunks: list[Chunk] = []
+        for ordinal, (chunk_key, start, end) in enumerate(markers):
+            text = parsed.text[start:end].strip()
+            if not text:
+                raise ValueError("EMPTY_DOCUMENT")
+            heading_match = re.match(r"## ([^\n]+)", text)
+            if heading_match is None:
+                raise ValueError(f"chunk {chunk_key!r} must start with an H2 heading")
+            section_path = tuple(part for part in (title, heading_match.group(1).strip()) if part)
+            count = len(tokens(text))
+            if count > self._max_chunk_tokens or len(text.encode("utf-8")) > 65_536:
+                raise ValueError("CHUNK_TOO_LARGE")
+            text_hash = sha256_text(text)
+            chunk_id = derived_id(
+                "chk",
+                parsed.parsed_document_id,
+                command.chunk_profile.identity,
+                ordinal,
+                start,
+                end,
+                text_hash,
+            )
+            chunks.append(
+                Chunk(
+                    schema_version="1.0.0",
+                    chunk_id=chunk_id,
+                    parsed_document_id=parsed.parsed_document_id,
+                    source_document_id=parsed.source_document_id,
+                    source_version_id=parsed.source_version_id,
+                    chunk_profile=command.chunk_profile,
+                    ordinal=ordinal,
+                    text=text,
+                    text_sha256=text_hash,
+                    document_char_span=Span(start, end),
+                    token_count=count,
+                    section_path=section_path,
+                )
+            )
+        if not chunks:
+            raise ValueError("EMPTY_DOCUMENT")
+        return tuple(chunks)
 
     def _split_to_budget(self, text: str, start: int, end: int) -> tuple[tuple[int, int], ...]:
         spans = token_spans(text[start:end])

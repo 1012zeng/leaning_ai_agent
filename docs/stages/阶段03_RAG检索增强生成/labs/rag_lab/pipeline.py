@@ -84,8 +84,13 @@ class OfflineRagPipeline:
         filters: Mapping[str, object] | None = None,
         inject_rerank_timeout: bool = False,
         token_budget: int | None = None,
+        known_versions: Mapping[str, str] | None = None,
     ) -> PipelineResult:
-        """Run ingestion through cited generation with optional teaching faults."""
+        """Run ingestion through cited generation with optional teaching faults.
+
+        ``known_versions`` maps ``external_source_id`` to the ``source_version_id`` from a
+        prior run under the same idempotency key; matching items are reported ``unchanged``.
+        """
 
         config = self.config
         snapshot = PipelineSnapshot()
@@ -110,7 +115,8 @@ class OfflineRagPipeline:
                 parser_profile=config.parser_profile,
                 chunk_profile=config.chunk_profile,
                 state_effective_at=config.state_effective_at,
-            )
+            ),
+            known_versions=known_versions,
         )
         ingestion = self._unwrap(ingestion_result, trace, ingestion_span)
         snapshot.add_ingestion(

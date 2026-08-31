@@ -6,6 +6,7 @@ import re
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+|[\u3400-\u4dbf\u4e00-\u9fff]")
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+CHUNK_MARKER = re.compile(r"^<!-- chunk: ([a-z0-9][a-z0-9-]*) -->\s*$", re.MULTILINE)
 
 
 def normalize_text(value: str) -> str:
@@ -35,6 +36,34 @@ def lexical_overlap(left: str, right: str) -> float:
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / len(left_tokens)
+
+
+def chunk_marker_boundaries(text: str) -> tuple[tuple[str, int, int], ...] | None:
+    """Return ``(chunk_key, start, end)`` for each ``<!-- chunk: ... -->`` marker.
+
+    Returns ``None`` when the document carries no explicit markers, so callers can
+    fall back to structure-aware heading boundaries. Chunk starts are left-trimmed so
+    chunk text begins at the heading that follows each marker.
+    """
+
+    markers = list(CHUNK_MARKER.finditer(text))
+    if not markers:
+        return None
+    boundaries: list[tuple[str, int, int]] = []
+    for index, marker in enumerate(markers):
+        start = marker.end()
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+        start = _find_heading_start(text, start)
+        chunk_key = marker.group(1)
+        boundaries.append((chunk_key, start, end))
+    return tuple(boundaries)
+
+
+def _find_heading_start(text: str, position: int) -> int:
+    index = position
+    while index < len(text) and text[index].isspace():
+        index += 1
+    return index
 
 
 def parse_front_matter(value: str) -> tuple[dict[str, str], str]:
