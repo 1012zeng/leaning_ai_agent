@@ -479,13 +479,13 @@ StageResult<T> = {
 ItemResult = {
   item_key: string,
   status: "created" | "updated" | "unchanged" | "failed" | "quarantined",
-  outcome_code?: string,
+  outcome_codes?: string[],
   output_refs: object,
   problem?: ProblemDetails
 }
 ```
 
-`partial_success` 必须有至少一个成功项和一个失败/隔离项；顶层 failed 表示没有可提交输出或事务级失败。逐项失败不得用日志文本代替结构化 `problem`。`outcome_code` 是 stage-specific 稳定机器码，不扩张通用 status 枚举；ingestion 至少定义 `RESTORED`、`METADATA_UPDATED`，失败原因仍只放 `problem.code`。
+`partial_success` 必须有至少一个成功项和一个失败/隔离项；顶层 failed 表示没有可提交输出或事务级失败。逐项失败不得用日志文本代替结构化 `problem`。`outcome_codes` 是去重、稳定排序的 stage-specific 机器码数组，不扩张通用 status 枚举；ingestion 至少定义 `RESTORED`、`METADATA_UPDATED`，规范顺序为 lifecycle code 在前、metadata code 在后，两者同时发生必须返回 `["RESTORED", "METADATA_UPDATED"]`。失败原因仍只放 `problem.code`。
 
 ## 5. Pipeline 阶段接口
 
@@ -520,7 +520,7 @@ class EvaluationPort(Protocol):
 
 | 阶段 | 输入 | 输出 | 成功/空结果语义 | 阶段负责的错误 |
 |---|---|---|---|---|
-| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 且最新状态 active、来源事实未变为 `status=unchanged`；tombstoned 后重新发现为 `status=updated, outcome_code=RESTORED`；URI/显示名/白名单 metadata 变化为 `status=updated, outcome_code=METADATA_UPDATED`；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希、生命周期状态转换 |
+| ingestion | `IngestionCommand{tenant_id, connector_id, items[], parser_profile, chunk_profile, idempotency_key}` | `IngestionReport{SourceDocument[], ParsedDocument[], Chunk[], item_results}` | 相同来源+内容+profiles 且最新状态 active、来源事实未变为 `status=unchanged`；tombstoned 后重新发现为 `status=updated, outcome_codes=[RESTORED]`；URI/显示名/白名单 metadata 变化为 `status=updated, outcome_codes=[METADATA_UPDATED]`；二者同时发生则两码都返回；空文档保留 SourceDocument 并隔离该项，不产生 ParsedDocument/Chunk | 读取、媒体类型、解码、解析、超长块、内容哈希、生命周期状态转换 |
 | indexing | `IndexBuildCommand{index_build_id, corpus_version, chunk_ids[], embedding_profile, index_profile, publish_alias?, expected_active_index_id?}` | `IndexBuildReport{IndexManifest, embedding_refs, item_results}` | 先写 staging；完整验证后 manifest `ready`；部分成功默认不发布 alias | embedding、维度、批写、后端 schema、manifest 校验、alias CAS |
 | retrieval | 完整 `RetrievalQuery` | `CandidateSet{query_id,index_id,candidates[]}` | 无命中返回 success + `candidates=[]`，不是 404/500 | 查询校验、filter、index readiness、后端超时 |
 | rerank | `RerankCommand{query_id,candidate_ids[],rerank_profile,limit}` | `RankedHitSet{query_id,hits[],confidence}` | port 按 ID 从同一 pipeline snapshot 解析不可变对象；空 candidates 返回 success + 空 hits；低于阈值仍返回 hits，但全部 `eligible_for_context=false` | 候选引用、模型超时、分数非有限、profile 不兼容 |
@@ -548,7 +548,7 @@ class EvaluationPort(Protocol):
 
 #### Retrieval 与 rerank
 
-Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供应商 `Hit`。Rerank 请求必须携带完整 query、candidate IDs 和 profile：
+Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供应商 `Hit`。Rerank 请求只携带 `query_id`、candidate IDs 和 profile，由同一 pipeline snapshot 解析不可变 query/candidate 对象：
 
 ```json
 {"schema_version":"1.0.0","request_id":"0198f902-b68d-7823-8d8a-99f4ff2d30fa","idempotency_key":"rerank:0198f8d7:profile-1","query_id":"0198f8d7-2f69-7aa1-bb32-77ea087b2c41","candidate_ids":["can_4070ae5762605c268f22a6dd176021c5"],"rerank_profile":{"profile_id":"rerank.rrf_bge","profile_version":"1.0.0","config_hash":"sha256:d12a..."},"limit":5}
@@ -635,7 +635,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 |---|---|---|
 | 0 bytes 或只含空白 | `EMPTY_DOCUMENT`，item quarantined，0 ParsedDocument/Chunk | `ingestion_quarantined_total{code}` |
 | UTF-8 中混入非法 bytes | strict profile 返回 `DECODE_ERROR`；lenient profile 记录 replacement count/warning | `parse_replacement_char_count` |
-| 同内容重复导入 | 最新状态 active 且来源事实/profile 均未变时为 `status=unchanged`；若最新状态 tombstoned 则追加 active 快照并返回 `status=updated, outcome_code=RESTORED`；来源 URI/显示名/白名单 metadata 变化则追加状态快照并返回 `status=updated, outcome_code=METADATA_UPDATED`；仅 profiles 未变时复用完整派生链，profiles 变化时重建受影响的派生对象 | `ingestion_unchanged_total`、`ingestion_restored_total`、`ingestion_metadata_updated_total` |
+| 同内容重复导入 | 最新状态 active 且来源事实/profile 均未变时为 `status=unchanged`；若最新状态 tombstoned 则追加 active 快照并返回 `status=updated, outcome_codes=[RESTORED]`；来源 URI/显示名/白名单 metadata 变化则追加状态快照并返回 `status=updated, outcome_codes=[METADATA_UPDATED]`；同时发生时返回两个码；仅 profiles 未变时复用完整派生链，profiles 变化时重建受影响的派生对象 | `ingestion_unchanged_total`、`ingestion_restored_total`、`ingestion_metadata_updated_total` |
 | 不同来源 URI 但内容相同 | 默认保留两个 logical document，允许共享 blob；除非 dedupe policy 明确合并 alias | `duplicate_content_groups` |
 | 单 chunk 超 profile 限制 | `CHUNK_TOO_LARGE`，不得让 embedding 静默截断 | `chunk_oversize_total`、chunk token p99 |
 | embedding 512 -> 1024 维 | 原索引拒绝写；创建新 index build，ready 后切 alias | `embedding_dimension_mismatch_total`、build coverage |
@@ -649,7 +649,7 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 ### 8.1 内容变更与删除
 
 1. 连接器用 `(tenant, connector, external_source_id)` 找到稳定 `source_document_id`。
-2. bytes hash 未变：先独立比较 lifecycle、来源事实和 parser/chunk profiles。tombstoned 来源追加同内容版本的 active 状态快照并返回 `status=updated, outcome_code=RESTORED`；URI/显示名/白名单 metadata 改变时追加状态快照并返回 `status=updated, outcome_code=METADATA_UPDATED`。profiles 未变时复用既有 ParsedDocument/Chunk/EmbeddingRecord；parser profile 变化时从 ParsedDocument 起生成新派生链，只有 chunk profile 变化时复用 ParsedDocument 并从 Chunk 起生成新派生链。只有 lifecycle、来源事实和 profiles 均未变时返回 `status=unchanged`；状态 outcome 与 profile 重建可同时发生。新派生链以及影响 filter 的来源事实变化都必须发布新 corpus/index manifest。
+2. bytes hash 未变：先独立比较 lifecycle、来源事实和 parser/chunk profiles。tombstoned 来源追加同内容版本的 active 状态快照并加入 `RESTORED` outcome；URI/显示名/白名单 metadata 改变时追加状态快照并加入 `METADATA_UPDATED` outcome；若同时发生，返回 `status=updated, outcome_codes=["RESTORED", "METADATA_UPDATED"]`。profiles 未变时复用既有 ParsedDocument/Chunk/EmbeddingRecord；parser profile 变化时从 ParsedDocument 起生成新派生链，只有 chunk profile 变化时复用 ParsedDocument 并从 Chunk 起生成新派生链。只有 lifecycle、来源事实和 profiles 均未变时返回 `status=unchanged`；状态 outcomes 与 profile 重建可同时发生。新派生链以及影响 filter 的来源事实变化都必须发布新 corpus/index manifest。
 3. bytes hash 改变：新增 SourceDocument version、ParsedDocument、Chunk、EmbeddingRecord；旧版本保持可读。
 4. 构建包含新版本的 immutable index，验证 coverage 和评测门槛后原子切换 alias。
 5. 来源删除：保留 `source_document_id` 和最后的 `source_version_id`，追加具有新 `source_state_id/state_effective_at` 且 `lifecycle_state=tombstoned` 的 SourceDocument 状态快照，再建新 corpus/index；旧快照与旧 index 用于历史 Answer/Citation 复盘，按保留策略异步回收。
@@ -667,8 +667,8 @@ Retrieval 接受 3.5 的完整对象；响应只返回 Candidate，不返回供�
 |---|---|
 | 同 external source + 同 bytes + 同 profiles + 最新状态 active + 来源事实未变 | `unchanged`，返回已有对象引用 |
 | 同 external source + 同 bytes + parser 或 chunk profile 变化 | 保留 `source_version_id`；parser profile 变化时从 ParsedDocument 起、仅 chunk profile 变化时从 Chunk 起生成新派生 ID，并重建后续 embedding/index；若同时恢复或更新 metadata，仍返回对应 outcome code |
-| 同 external source + 同 bytes + 最新状态 tombstoned + 同 profiles | 追加 active SourceDocument 状态快照，返回 `status=updated, outcome_code=RESTORED`；复用既有派生链并发布新 corpus/index manifest |
-| 同 external source + 同 bytes + URI/显示名/白名单 metadata 变化 + 同 profiles | 追加 active 状态快照，返回 `status=updated, outcome_code=METADATA_UPDATED`；复用既有派生链，filterable metadata 变化时发布新 index manifest |
+| 同 external source + 同 bytes + 最新状态 tombstoned + 同 profiles | 追加 active SourceDocument 状态快照，返回 `status=updated, outcome_codes=[RESTORED]`；复用既有派生链并发布新 corpus/index manifest |
+| 同 external source + 同 bytes + URI/显示名/白名单 metadata 变化 + 同 profiles | 追加 active 状态快照，返回 `status=updated, outcome_codes=[METADATA_UPDATED]`；复用既有派生链，filterable metadata 变化时发布新 index manifest；若同时从 tombstoned 恢复则返回 `[RESTORED, METADATA_UPDATED]` |
 | 同 external source + 新 bytes | 新 source version 与全套派生链 |
 | 不同 external source + 同 bytes | 两个 SourceDocument，共享 content-addressed blob；默认各自生成可追溯派生链 |
 | 同 idempotency key + 同 payload hash | 返回第一次的 StageResult，不重复副作用 |
@@ -834,7 +834,7 @@ manifest 不可变并覆盖所有必需文件。`answer_labels.jsonl` 和 `trace
 3. 缺必填字段、未知 major、未知关键 enum -> 明确拒绝。
 4. JSONL 中一个坏行 -> 报行号/item problem；其他行按调用方 partial policy 处理。
 5. ID golden tests：固定输入/profile 永远得到同 ID；修改任一哈希输入必得不同 ID。
-6. 生命周期状态选择：固定 `active -> tombstoned -> restored(active)` 事件序列，断言每一步都先按 `source_document_id` 选择最新快照再判断状态；tombstoned 阶段不得返回旧 active，恢复阶段返回 `status=updated, outcome_code=RESTORED`，复用原 `source_version_id` 但使用新 `source_state_id`。
+6. 生命周期状态选择：固定 `active -> tombstoned -> restored(active)` 事件序列，断言每一步都先按 `source_document_id` 选择最新快照再判断状态；tombstoned 阶段不得返回旧 active，恢复阶段返回 `status=updated, outcome_codes=[RESTORED]`，复用原 `source_version_id` 但使用新 `source_state_id`；恢复时同时更改 metadata 的用例必须按规范顺序返回 `[RESTORED, METADATA_UPDATED]`。
 7. Profile 转换：固定相同 bytes，分别修改 parser profile 与 chunk profile；前者必须生成新的 ParsedDocument/Chunk 链，后者必须复用 ParsedDocument 并生成新的 Chunk 链，两者均不得返回 `status=unchanged`。
 8. 排序配置归属：retrieval profile schema 出现 RRF 参数或 rerank profile 缺少融合算法 identity 时拒绝配置；同一 CandidateSet 修改 RRF 参数必须生成新的 RankedHit ID。
 
