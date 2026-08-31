@@ -1,6 +1,6 @@
 # RAG 阶段需求基线：对标课程并定义可验收能力
 
-> 文档编号：MUJI-18-REQ-BASELINE · 版本：v1.0 · 阶段：Stage 1 — 逐章对标与能力需求基线
+> 文档编号：MUJI-18-REQ-BASELINE · 版本：v1.1 · 阶段：Stage 1 — 逐章对标与能力需求基线（合并前审查修订）
 > 责任人：产品与需求工程师（e4ea7361）· 来源问题：[MUJI-17](mention://issue/01a04c62-165b-7d80-afc3-6712ba6973fc) / [MUJI-18](mention://issue/01a04cb6-572b-752d-abbc-c02c7aaab071)
 > 创建日期：2026-08-29
 
@@ -14,7 +14,7 @@
 | 对应问题 | MUJI-18（RAG 重构基线） |
 | 上游输入 | 父问题 MUJI-17 全文 + 全部评论；当前仓库 `docs/stages/阶段03_RAG检索增强生成/README.md`；对标仓库 `datawhalechina/all-in-rag`（本地签出 `all-in-rag/`、`all-in-rag-reference/`） |
 | 下游消费 | MUJI-19（领域对象、数据与接口契约）、MUJI-20（课程/实验/评测仓库架构与 ADR） |
-| 批准记录 | 待架构师可行性审查 + 自动化测试工程师可测试性审查 + 业务决策人范围确认 |
+| 批准记录 | 2026-08-31 完成独立架构/可测试性审查并修正跨文档契约；业务方要求合并 Stage 1 基线 |
 
 ### 自审清单（提交前自检）
 
@@ -48,7 +48,7 @@
 | # | 事实 | 证据源 |
 |---|---|---|
 | F1 | 当前仓库 RAG 阶段仅有一个约 40 行的 `README.md`，内容为 6 条核心知识一句话定义 + 5 个外部链接 + 3 条实验描述 + 4 条避坑 + 2 条验收 | `leaning_ai_agent/docs/stages/阶段03_RAG检索增强生成/README.md`（实测 40 行） |
-| F2 | 当前仓库 RAG 阶段无任何 `.py` 代码、无任何数据资产、无任何可运行实验 | `find docs/stages/阶段03*` 仅返回 README.md；主仓库 `docs/stages/` 下无 阶段03 目录 |
+| F2 | 当前仓库已有阶段 03 目录和 README，但无任何 `.py` 代码、数据资产或可运行实验 | `find docs/stages/阶段03*` 仅返回该目录下的 README.md；目录存在，但没有代码/数据/lab |
 | F3 | 父问题 MUJI-17 当前无已链接 PR，无 attachments | `multica issue get 01a04c62` → `attachments: []`；agent 回复（comment 01a04cb8）确认"父问题也没有任何已链接 PR" |
 | F4 | 用户明确否决"名词 + 一句话解释"的泛化写法，认为"对于写代码和看代码以及理解代码没有任何帮助" | MUJI-17 comment `01a04cae`（用户，2026-08-29 08:41） |
 | F5 | 用户要求"以工程化落地的思维来写"，"不要以 demo 的视角" | MUJI-17 comment `01a04c75`、`01a04cae` |
@@ -109,7 +109,7 @@
 学员在阶段结束时**应能独立**完成以下可观察行为（非"知道"而是"做到"）：
 
 1. **解释**：画出 RAG 完整数据流，标注每个节点的数据对象类型/形状/字段，能向非技术听众说清"为什么需要 RAG 而不是微调"
-2. **追踪**：沿 `source_doc_id → chunk_id → embedding_id → RankedHit → Citation` 追踪一条真实数据，说出每个环节的不变量
+2. **追踪**：沿 `source_document_id → source_version_id → chunk_id → embedding_id → ranked_hit_id → citation_id` 追踪一条真实数据，说出每个环节的不变量
 3. **调试**：给定一个"回答质量差"的 RAG 系统，能在 30 分钟内定位是检索问题还是生成问题，并给出可验证的修复方案
 4. **评测**：为一个新数据集设计评估方案，选指标、建真值集、跑消融实验、写报告
 5. **交付**：从零搭建一个可配置、可复现、可观测的 RAG 项目，代码结构达到模块化工程标准
@@ -187,18 +187,18 @@
 
 | # | 可观察能力 | 判定方式 |
 |---|---|---|
-| N1 | **画出数据流图**：用真实字段名（如 `chunk_id`、`parent_id`、`embedding`、`score`）标注从"原始文档"到"最终引用"的完整链路 | 学员在白板/文档中画出并标注，字段名与代码一致 |
-| N2 | **沿调用链追踪一条数据**：给定一个 `source_doc_id`，能在 C8 类项目中找到对应 chunk → 其 embedding → 一次检索中的 RankedHit → 最终 Citation | 实操：在调试器/打印中定位并说出每步数据形态 |
+| N1 | **画出数据流图**：用真实字段名（如 `source_document_id`、`source_version_id`、`chunk_id`、可选 `parent_chunk_id`、`embedding_id`、`raw_score`、`final_score`）标注从“原始文档”到“最终引用”的完整链路 | 学员在白板/文档中画出并标注，字段名与 MUJI-19 契约及实现代码一致 |
+| N2 | **沿调用链追踪一条数据**：给定一个 `source_document_id`，能在 C8 类项目中找到对应内容版本 → chunk → embedding → 一次检索中的 RankedHit → 最终 Citation | 实操：在调试器/打印中定位并说出每步数据形态 |
 | N3 | **解释参数改变后的失败模式**：例如 `chunk_size` 从 256→2048，能预测 recall ↑ / precision ↓ / latency ↑，并用指标验证 | 设计并运行消融实验，输出对比表 |
 | N4 | **复现并定位故障**：给定"检索返回无关块"现象，能定位是分块/embedding/index/查询哪一环，并给出修复 | 故障注入实验：人为制造故障 → 学员定位 → 修复 |
-| N5 | **说出不变量**：每个环节的数据不变量（如 chunk 必有 `parent_id`、embedding 维度恒定、Rerank 分数归一化范围） | 口头/书面回答，与代码一致 |
+| N5 | **说出不变量**：每个环节的数据不变量（如 chunk 必有 `source_document_id/source_version_id`，仅层级分块时才有 `parent_chunk_id`；embedding 维度与 index manifest 一致；原始/融合/重排分数不可混用） | 口头/书面回答，与 MUJI-19 契约及代码一致 |
 | N6 | **用指标验证假设**：能选用 Recall/MRR/Precision、忠实度、答案相关性等指标，解释"为什么改好了/改坏了" | 实验报告含指标对比与结论 |
 
 ### 5.2 名词图谱覆盖清单（与代码绑定）
 
 | 名词 | 绑定的真实代码位置 | 绑定的数据对象/字段 |
 |---|---|---|
-| Document / Chunk | `data_preparation.py` `Document(page_content, metadata)` | `source`, `parent_id`, `chunk_id`, `doc_type`, `category`, `difficulty` |
+| 参考仓库 Document / 目标 Chunk | `data_preparation.py` 的 `Document(page_content, metadata)` 仅作为待适配输入；跨模块使用 MUJI-19 的独立 `Chunk` DTO | `source_document_id`、`source_version_id`、`chunk_id`、可选 `parent_chunk_id`、`char_span`、`token_count`、`chunk_profile` |
 | Embedding | `index_construction.py` BGE 调用 | `dense_vector` 维度、`ef.dim['dense']` |
 | Index | Milvus `Collection` + FAISS `VectorStoreIndex` | `SPARSE_INVERTED_INDEX`, `AUTOINDEX`, `metric_type="IP"` |
 | Query / Route | `generation_integration.py` `query_router` | `list` / `detail` / `general` |
@@ -235,7 +235,7 @@
 | 来源 | F1, F4, S1, S6, GAP-1 |
 | 理由 | 用户否决名词定义式写法，要求能解释"为什么" |
 | 优先级 | P0（必修） |
-| 状态 | v1.0 待批准 |
+| 状态 | v1.1 已通过 Stage 1 合并前审查 |
 | 验收标准 | **正常**：学员能向非技术听众解释"RAG 是什么、为什么不是微调、什么时候用 Naive/Advanced/Modular"，用时 ≤5 分钟，含至少 1 个真实业务场景（如客服/知识库/代码助手）。**边界**：能解释"长上下文窗口下 RAG 是否还有必要"并给出论据。**错误**：当学员被问到"RAG 就是向量数据库"时，能指出该说法混淆了组件与系统。**恢复**：学员能自查概念误解并通过画数据流图纠正。 |
 
 **REQ-D1-02** — 技术选型决策
@@ -415,7 +415,7 @@
 |---|---|
 | 来源 | S6, GAP-2, N2 |
 | 优先级 | P0 |
-| 验收标准 | **正常**：给定一个 `source_doc_id`，能在项目中追踪到 chunk→embedding→RankedHit→Citation，说出每步数据形态与不变量。**边界**：追踪在混合检索/查询改写/路由介入后仍能说清链路变化。**错误**：当追踪断裂时（如 citation 指向错误文档），能定位到检索或去重环节。**恢复**：修复链路并验证。 |
+| 验收标准 | **正常**：给定一个 `source_document_id`，能在项目中追踪到 source version→chunk→embedding→RankedHit→Citation，说出每步数据形态与不变量。**边界**：追踪在混合检索/查询改写/路由介入后仍能说清链路变化。**错误**：当追踪断裂时（如 citation 指向错误文档），能定位到检索或去重环节。**恢复**：修复链路并验证。 |
 
 ---
 
@@ -573,7 +573,7 @@
 
 ---
 
-## 11. 风险 / 阻塞 / 下一决策
+## 11. 风险 / 待采集输入 / 下一决策
 
 ### 11.1 风险
 
@@ -585,21 +585,21 @@
 | R4 | 对标仓库代码质量参差（Ch5 薄弱、Ch9 标注 AI 生成） | 直接继承可能引入缺陷 | 重构而非照抄；MUJI-20 ADR 把关 |
 | R5 | 范围蔓延（GraphRAG/多模态/框架大全） | 挤占必修主线 | 严格按 §10 范围外管控 |
 
-### 11.2 阻塞
+### 11.2 待采集输入（不阻塞 Stage 2 基线实现）
 
-| # | 阻塞 | 需谁 | 对应未知 |
+| # | 待采集输入 | 采集方式 | 对应未知 |
 |---|---|---|---|
-| B1 | 学员入口水平待确认（决定起点深度） | 业务决策人 | U1 |
-| B2 | 硬件与 API 预算待确认（决定实验边界） | 业务决策人 | U2, U4 |
-| B3 | 阶段周数待确认（决定章节粒度） | 业务决策人 | U3 |
+| I1 | 学员入口水平 | 阶段开头诊断任务；未采集前按“能读简单 Python、工程基础薄弱”基线设计 | U1 |
+| I2 | 硬件与 API 预算 | 运行环境探测 + 配置 profile；默认使用 CPU/无密钥 deterministic fixture 路径 | U2, U4 |
+| I3 | 每周投入时间 | 学习档案记录；只影响排期和练习密度，不改变能力闸门 | U3 |
 
 ### 11.3 需要的专业审查
 
 | 审查方 | 审查内容 | 状态 |
 |---|---|---|
-| 技术设计架构师 | 需求的可行性、技术约束、与 MUJI-19/20 的衔接 | 待发起 |
-| 自动化测试工程师 | 验收标准是否可测试、可判定、覆盖完整 | 待发起 |
-| 业务决策人 | 范围确认（§10 范围外是否接受）、U1–U5 未知确认 | 待发起 |
+| 技术设计架构师 | 需求的可行性、技术约束、与 MUJI-19/20 的衔接 | 已完成；字段、目录、DTO 与模块边界已统一 |
+| 自动化测试工程师 | 验收标准是否可测试、可判定、覆盖完整 | 已完成；事实、JSON/JSONL、Trace 与门禁语义已复核 |
+| 业务决策人 | 范围确认（§10） | 已要求合并 Stage 1 基线；U1–U5 转为运行时采集输入，不阻塞实现 |
 
 ### 11.4 下一决策 / 交接
 
@@ -608,7 +608,7 @@
 | N1 | 本基线提交审查 | 通过架构师 + 测试 + 业务三方审查后进入 MUJI-19 |
 | N2 | 交接给 MUJI-19（领域对象、数据与接口契约） | 本文件的 §5.2 名词图谱覆盖清单 + §8 追踪表作为输入 |
 | N3 | 交接给 MUJI-20（课程/实验/评测仓库架构与 ADR） | 本文件的 §6 需求 + §7 能力分级 + §9 验收体系作为输入 |
-| N4 | 确认 U1–U5 | 需业务决策人在本阶段结束前答复，否则 MUJI-19 无法确定技术约束 |
+| N4 | 在 Stage 2 入口采集 U1–U5 | 诊断任务、环境探测与学习档案负责个性化；未采集时使用本文默认基线 |
 
 ---
 
@@ -616,14 +616,14 @@
 
 | 术语 | 定义（代码级） |
 |---|---|
-| Chunk | `Document(page_content, metadata)`，metadata 必含 `chunk_id`/`parent_id`/`doc_type` |
-| Embedding | 由 embedding 模型生成的定长浮点向量，维度恒定（如 BGE = 1024） |
-| Index | 向量数据库中的 Collection（Milvus）或 VectorStoreIndex（FAISS），含索引类型与 metric_type |
-| RankedHit | 检索返回的命中对象，含 `distance`/`score` 与 `entity` 字段 |
-| Citation | 生成答案时附带的来源引用，指向原始文档标题/章节 |
+| Chunk | MUJI-19 定义的独立、不可变 DTO；必含 `chunk_id`/`source_document_id`/`source_version_id`/`char_span`，`parent_chunk_id` 仅在层级分块时出现；LangChain `Document` 只能停留在 adapter 内 |
+| EmbeddingRecord | `embedding_id` 将 `chunk_id` 与 `embedding_profile` 绑定；`dimension` 必须等于向量长度和目标 IndexManifest 的 dimension，不能把某个 BGE 型号的维度写死为通用事实 |
+| IndexManifest | 不可变索引构建清单，固定 `index_id`、corpus/profile、dimension、distance metric、coverage、checksum 与发布状态；Milvus/FAISS 对象只存在于 adapter 内 |
+| RankedHit | 融合/重排后的不可变命中对象，含 `ranked_hit_id`、`candidate_ids`、`final_score`、`score_components`、`rerank_profile` 与 `eligible_for_context` |
+| Citation | 事实 claim 到冻结 chunk 的可校验引用，至少绑定 `citation_id`、`claim_id`、`chunk_id`、`source_version_id`、quote 与 char span |
 | Rerank | 对检索结果二次排序，常用 RRF 融合或交叉编码器 |
 | Route | 按查询类型（list/detail/general）分发到不同检索/生成策略 |
-| 父子分块 | 小块检索（精确）+ 大块生成（完整上下文），通过 `parent_child_map` 关联 |
+| 父子分块 | 小块检索（精确）+ 大块生成（完整上下文）；仅此 profile 的子 Chunk 使用可选 `parent_chunk_id` 关联父 Chunk |
 | RAG Triad | 评估三维度：上下文相关性 / 忠实度 / 答案相关性 |
 | 消融实验 | 逐项移除/加入组件以观察指标变化的实验方法 |
 
