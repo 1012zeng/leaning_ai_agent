@@ -157,6 +157,28 @@
       "applicability": "runs with complete usage and pricing profile, or explicitly zero-cost local profiles",
       "empty_semantics": "unknown usage or price yields status=unknown and amount=null, never zero",
       "aggregation": "total amount and per-evaluated-case amount within one currency and pricing profile"
+    },
+    {
+      "metric_id": "filter_violation_count",
+      "layer": "retrieval",
+      "unit": "count",
+      "range": [0, null],
+      "inputs": ["ordered_retrieved_chunk_ids", "retrieval_labels.relevance_grade", "retrieval_labels.label_role"],
+      "formula": "count of retrieved chunks whose metadata violates the query filter while carrying a positive relevance grade or whose label_role marks a filter breach",
+      "applicability": "metadata_filter cases and any run that claims filter enforcement",
+      "empty_semantics": "not_applicable when the case has no metadata filter",
+      "aggregation": "total and per-case count; the pass threshold is zero"
+    },
+    {
+      "metric_id": "unacceptable_claim_rate",
+      "layer": "generation",
+      "unit": "ratio",
+      "range": [0, 1],
+      "inputs": ["answer.text", "ground_truth.unacceptable_claims", "judge_profile"],
+      "formula": "count(answer spans matching an unacceptable claim) / count(answer spans judged factual); abstentions with no factual claims are not penalized",
+      "applicability": "answer-mode cases with at least one unacceptable claim defined",
+      "empty_semantics": "not_applicable when no unacceptable claim is defined; an abstention is not automatically zero",
+      "aggregation": "macro mean over evaluated applicable cases; report evaluated and not-applicable counts"
     }
   ],
   "failure_attribution": [
