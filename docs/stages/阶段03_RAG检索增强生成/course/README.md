@@ -86,6 +86,8 @@ python -m rag_lab benchmark --config configs/offline.json --iterations 30
 - [综合项目与项目答辩量表](capstone.md)
 - [出师试卷、参考答案与评分标准](exam.md)
 - [20 道面试题、追问与评分点](interview.md)
+- [RAG 术语与常用库解释](glossary.md) — 按 L01–L06 组织的名词 + 作用 + 边界
+- [all-in-rag 路线对照表](all-in-rag-mapping.md) — 参考课程章节 → 本课程映射 + 吸收/改进
 - [官方资料核对表](references.md)
 
-下一步：完成诊断并打开 L01；先画出对象链，再运行 baseline。
+下一步：完成诊断并打开 L01；先画出对象链，再运行 baseline。术语与对照表可在学习过程中按需查阅。

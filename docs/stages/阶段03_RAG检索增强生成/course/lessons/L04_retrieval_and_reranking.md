@@ -201,6 +201,42 @@ token utilization、selected/dropped hit count、duplicate ratio、eligible rate
 
 参考答案要点：更大 budget 不是单调更好。正确报告应指出哪类题受益、哪类因噪声退化，并选择满足引用/faithfulness 门槛的最低预算。任何 silent truncation 都是阻断错误。
 
+## 概念闭环 5：2026 主流 RAG 变体与取舍
+
+> 主线（L01–L04）建立的是"检索→重排→上下文→生成"的可观测基线。2026 工程实践在此基线上叠加了多种变体。本节只做**对比与取舍**，不替代主线；每种变体都应按 G2 方式在固定评测集上做消融。
+
+### 1. 一句话定义与问题
+
+当朴素 RAG 在相关切片上出现"检索命中但答案漏关键信息"或"检索不到但模型其实知道"两类失败时，2026 主流变体从两个方向切入：**让检索自我纠错**（corrective / self-RAG）和**让检索变成多步决策**（agentic retrieval / plan-and-execute）。
+
+### 2. 变体对比
+
+| 变体 | 核心机制 | 解决什么 | 新增风险 / 成本 | 何时采用 |
+|---|---|---|---|---|
+| Corrective RAG（CRAG） | 检索后用轻量评估器给每个 chunk 打分（relevant / irrelevant / ambiguous），对负面结果触发补充检索或改写。 | 检索噪声多、前排混入不相关 chunk。 | 增加一次评估调用和分支逻辑；评估器本身可能误判。 | 检索结果质量波动大、irrelevant chunk 频繁进入 context。 |
+| Self-RAG | 生成过程中让模型自判是否需要检索、检索后自判 chunk 是否有用、生成后自判回答是否 grounded，按需触发多轮。 | 减少不必要的检索、提升引用忠实度。 | 多轮推理成本和延迟显著；自判 token 需版本化并计入 judge profile。 | 查询分布差异大、很多题无需检索或需多轮检索。 |
+| Agentic retrieval / ReAct | 把检索作为 Agent 的一个工具，Agent 根据中间结果决定下一步（再查、改写、澄清、终止）。 | 多跳、需分解或动态选择工具的复杂查询。 | 步骤数、工具调用错误累积、成本；需终止条件和预算。 | 确定性 query decomposition 无法覆盖、需多步查询规划。 |
+| Long-context RAG | 把更长文档或更多 chunk 直接放进上下文，配合长上下文模型或上下文压缩。 | 小块分块导致跨块信息断裂。 | 成本随上下文增长；长上下文模型仍可能丢中间信息（lost-in-the-middle）。 | 文档总量不大或跨块事实密集，且已证明短上下文确实丢失关键信息。 |
+| Reranker-as-judge | 用 LLM 替代 cross-encoder 做重排，输出分级相关度。 | 需要更细粒度相关性判断。 | LLM 调用成本高、延迟大；judge profile 必须固定。 | cross-encoder 精度不足且延迟预算宽松。 |
+
+### 3. 取舍原则
+
+1. **先证明基线失败模式**：用 L06 的切片报告定位是 retrieval / context / generation 哪一步失败，再选对应变体。不要在朴素 RAG 还没跑通时引入 Self-RAG。
+2. **每种变体都是新的 profile / 新的 port**：CRAG 的评估器、Self-RAG 的自判 token、Agentic 的工具 schema 都必须版本化，进 G3/G4 评测。
+3. **成本与延迟是硬约束**：多轮检索和 Agent 步骤数直接放大 p95 和单位 query 成本；报告必须包含成本对比。
+4. **fixture 不能验证变体效果**：变体涉及真实检索判断和生成自判，必须用非 fixture 的真实模型 + 固定评测集。
+
+### 4. 与本课程主线的关系
+
+- L01–L04 的 Candidate / RankedHit / ContextBundle 对象链是**所有变体的公共基础**：CRAG 在 Candidate 层加评估，Self-RAG 在 generation 层加自判，Agentic 把整条链包进 Agent 工具。
+- 变体的观测都依赖 L06 的 TraceEvent 和指标契约；没有可观测基线，变体优化就是黑盒。
+
+### 5. 学员任务与参考答案
+
+任务：选一种变体（CRAG 或 Self-RAG），在固定评测集上与 L04 的 hybrid baseline 做消融，报告 Recall@5、MRR、faithfulness、p95、单位 query 成本和失败切片变化。
+
+参考答案要点：变体不是银弹。正确结论应指出哪类切片受益、哪类退化，并给出"在什么条件下采用、什么条件下回退基线"的明确判据。若成本增长超过质量改善，应拒绝采用。
+
 ## G2 优化闸门
 
 用固定 `dataset_id@version`、index ID、metric profile 和代码版本比较 Naive dense baseline 与 hybrid + rerank。通过要求：Recall@5 绝对提升至少 0.10，同时报告 MRR、p95 和成本；若未达标，可以提交严谨的失败分析，但不能宣称过闸。

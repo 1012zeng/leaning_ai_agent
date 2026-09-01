@@ -37,5 +37,7 @@
 - [课程、实验与仓库架构](planning/02_learning_and_repo_architecture.md)
 - [代码与数据契约](planning/03_code_and_data_contracts.md)
 - [官方资料核对表](course/references.md)
+- [RAG 术语与常用库解释](course/glossary.md)
+- [all-in-rag 路线对照表](course/all-in-rag-mapping.md)
 
 下一步：进入课程入口，先完成 20 分钟诊断，不要直接跳到向量数据库或框架章节。
